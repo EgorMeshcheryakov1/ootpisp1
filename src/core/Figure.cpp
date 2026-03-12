@@ -111,7 +111,6 @@ namespace core {
 
         size_t n = verticesRelative.size();
 
-        // Рисуем заливку
         sf::ConvexShape fillShape(static_cast<std::size_t>(n));
         for (size_t i = 0; i < n; ++i) {
             fillShape.setPoint(i, verticesRelative[i]);
@@ -124,33 +123,58 @@ namespace core {
 
         if (edges.empty()) return;
 
-        // Рисуем грани
         std::vector<sf::Vector2f> V(n);
         for (size_t i = 0; i < n; ++i) {
             V[i] = getAbsoluteVertex(verticesRelative[i]);
         }
 
-        // Отрисовка граней с поддержкой разной толщины
         for (size_t i = 0; i < n; ++i) {
             size_t next = (i + 1) % n;
-            size_t eIdx = i < edges.size() ? i : 0;
+            size_t eIdx = (i < edges.size()) ? i : 0;
 
-            if (edges[eIdx].width <= 0.001f) continue;
+            float drawWidth = edges[eIdx].width;
+            sf::Color drawColor = edges[eIdx].color;
 
-            sf::Vector2f dir = math::normalize(V[next] - V[i]);
-            sf::Vector2f normal = math::perpendicular(dir);
-            float halfWidth = edges[eIdx].width / 2.f;
+            if (edges[eIdx].flashEnabled && edges[eIdx].flashDuration > 0.f) {
+                float t = edges[eIdx].flashTime / edges[eIdx].flashDuration;
+                if (t < 0.f) t = 0.f;
+                if (t > 1.f) t = 1.f;
+
+                float pulse = 0.5f + 0.5f * std::sin((1.f - t) * 18.f);
+                drawWidth += 2.0f + pulse * 3.0f;
+
+                auto mixChannel = [&](sf::Uint8 from, sf::Uint8 to) -> sf::Uint8 {
+                    float k = 0.55f + 0.45f * pulse;
+                    return static_cast<sf::Uint8>(from + (to - from) * k);
+                    };
+
+                drawColor.r = mixChannel(drawColor.r, 255);
+                drawColor.g = mixChannel(drawColor.g, 255);
+                drawColor.b = mixChannel(drawColor.b, 0);
+            }
+
+            if (drawWidth <= 0.001f) continue;
+
+            sf::Vector2f delta = V[next] - V[i];
+            float len = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            if (len <= 0.0001f) continue;
+
+            sf::Vector2f dir = delta / len;
+            sf::Vector2f normal(-dir.y, dir.x);
+            float halfWidth = drawWidth / 2.f;
 
             sf::ConvexShape edgeQuad(4);
             edgeQuad.setPoint(0, V[i] - normal * halfWidth);
             edgeQuad.setPoint(1, V[i] + normal * halfWidth);
             edgeQuad.setPoint(2, V[next] + normal * halfWidth);
             edgeQuad.setPoint(3, V[next] - normal * halfWidth);
-            edgeQuad.setFillColor(edges[eIdx].color);
+            edgeQuad.setFillColor(drawColor);
 
             target.draw(edgeQuad);
         }
     }
+
+
 
     void Figure::move(sf::Vector2f delta) {
         anchor += delta;

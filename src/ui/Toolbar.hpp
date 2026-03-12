@@ -4,22 +4,21 @@
 
 namespace ui {
 
-enum class Tool {
-  Select,
-  Rectangle,
-  Triangle,
-  Hexagon,
-  Rhombus,
-  Trapezoid,
-  Circle
-};
+    enum class Tool {
+        Select,
+        Rectangle,
+        Triangle,
+        Hexagon,
+        Rhombus,
+        Trapezoid,
+        Circle
+    };
 
-class Toolbar {
-public:
-  Toolbar() = default;
+    class Toolbar {
+    public:
+        Toolbar() = default;
 
-  // Renders the toolbar and returns true if the tool changed
-  bool render(Tool &currentTool);
-};
+        bool render(Tool& currentTool);
+    };
 
 } // namespace ui
