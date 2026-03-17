@@ -20,10 +20,8 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 300, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(300, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoCollapse;
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                             ImGuiWindowFlags_NoMove    | ImGuiWindowFlags_NoCollapse;
 
     ImGui::Begin(u8"\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u0430", nullptr, flags);
 
@@ -34,9 +32,8 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         viewport.worldOrigin.x = origin[0];
         viewport.worldOrigin.y = origin[1];
     }
-    if (ImGui::Button(u8"\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u0432\u0438\u0434 \u043a (0,0)")) {
+    if (ImGui::Button(u8"\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u0432\u0438\u0434 \u043a (0,0)"))
         viewport.worldOrigin = sf::Vector2f(0.f, 0.f);
-    }
 
     ImGui::Separator();
     ImGui::TextUnformatted(u8"\u0422\u043e\u0447\u043a\u0430 \u043e\u0442\u0441\u0447\u0451\u0442\u0430");
@@ -54,9 +51,8 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
 
     ImGui::Separator();
     ImGui::TextUnformatted(u8"\u041c\u0430\u0441\u0448\u0442\u0430\u0431");
-    if (ImGui::Button("-")) {
+    if (ImGui::Button("-"))
         viewport.zoomAt(sf::Vector2f(ImGui::GetIO().DisplaySize.x/2.f, ImGui::GetIO().DisplaySize.y/2.f), 1.f/1.1f);
-    }
     ImGui::SameLine();
     float zoomPct = viewport.zoom * 100.f;
     ImGui::SetNextItemWidth(80.f);
@@ -68,21 +64,50 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         viewport.worldOrigin = screenCenter - worldPoint * viewport.zoom;
     }
     ImGui::SameLine();
-    if (ImGui::Button("+")) {
+    if (ImGui::Button("+"))
         viewport.zoomAt(sf::Vector2f(ImGui::GetIO().DisplaySize.x/2.f, ImGui::GetIO().DisplaySize.y/2.f), 1.1f);
-    }
     if (ImGui::Button(u8"\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0432\u0441\u0451")) fitRequested = true;
 
     ImGui::Separator();
     ImGui::Spacing();
 
     if (!selectedFigure) {
-        // Show multi-selection info if any
         if (scene.getSelection().size() > 1) {
             ImGui::TextUnformatted(u8"\u0412\u044b\u0431\u0440\u0430\u043d\u043e \u0444\u0438\u0433\u0443\u0440: ");
             ImGui::SameLine();
             ImGui::Text("%zu", scene.getSelection().size());
-            ImGui::TextDisabled(u8"\u041d\u0430\u0436\u043c\u0438\u0442\u0435 \"\u0421\u0433\u0440\u0443\u043f\u043f.\" \u0432 \u043f\u0430\u043d\u0435\u043b\u0438 \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u043e\u0432");
+
+            // ── Add all selected to an existing composite ───────────────────
+            // Collect composites from the scene
+            std::vector<core::CompositeFigure*> composites;
+            for (const auto& fig : scene.getFigures()) {
+                auto* c = dynamic_cast<core::CompositeFigure*>(fig.get());
+                if (c) composites.push_back(c);
+            }
+            if (!composites.empty()) {
+                ImGui::Separator();
+                ImGui::TextUnformatted(u8"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0432 \u0441\u043e\u0441\u0442\u0430\u0432\u043d\u0443\u044e:");
+                for (size_t ci = 0; ci < composites.size(); ++ci) {
+                    ImGui::PushID((int)ci);
+                    char label[64];
+                    std::snprintf(label, sizeof(label), u8"\u0421\u043e\u0441\u0442\u0430\u0432\u043d\u0430\u044f %zu", ci + 1);
+                    if (ImGui::SmallButton(label)) {
+                        auto selCopy = scene.getSelection();
+                        for (core::Figure* f : selCopy) {
+                            if (dynamic_cast<core::CompositeFigure*>(f) == composites[ci]) continue;
+                            // find unique_ptr in scene
+                            std::unique_ptr<core::Figure> owned;
+                            for (auto& up : const_cast<std::vector<std::unique_ptr<core::Figure>>&>(scene.getFigures())) {
+                                if (up.get() == f) { owned = std::move(up); break; }
+                            }
+                            scene.removeFigure(f);
+                            if (owned) composites[ci]->addChild(std::move(owned));
+                        }
+                        scene.clearSelection();
+                    }
+                    ImGui::PopID();
+                }
+            }
         } else {
             ImGui::TextDisabled(u8"\u0424\u0438\u0433\u0443\u0440\u0430 \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d\u0430.");
         }
@@ -102,23 +127,56 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
             ImGui::Text(u8"\u0414\u0435\u0442\u0435\u0439: %zu", children.size());
             ImGui::Spacing();
 
+            // List children with remove buttons
             int removeIdx = -1;
             for (size_t i = 0; i < children.size(); ++i) {
                 ImGui::PushID((int)i);
-                ImGui::Text("%s %zu", u8"\u0424\u0438\u0433\u0443\u0440\u0430", i + 1);
+                // Show type name
+                const char* typeName = u8"\u0424\u0438\u0433\u0443\u0440\u0430";
+                if (dynamic_cast<core::PolylineShape*>(children[i].get()))
+                    typeName = u8"\u041f\u043e\u043b\u0438\u043b\u0438\u043d\u0438\u044f";
+                else if (dynamic_cast<core::Rectangle*>(children[i].get()))
+                    typeName = u8"\u041f\u0440\u044f\u043c\u043e\u0443\u0433.";
+                else if (dynamic_cast<core::Circle*>(children[i].get()))
+                    typeName = u8"\u041a\u0440\u0443\u0433";
+                ImGui::Text("%s %zu", typeName, i + 1);
                 ImGui::SameLine();
-                if (ImGui::SmallButton(u8"\u0423\u0434\u0430\u043b\u0438\u0442\u044c")) {
-                    removeIdx = (int)i;
-                }
+                if (ImGui::SmallButton(u8"\u0423\u0434\u0430\u043b\u0438\u0442\u044c")) removeIdx = (int)i;
                 ImGui::PopID();
             }
 
             if (removeIdx >= 0 && (size_t)removeIdx < children.size()) {
-                // Extract child back to scene
                 auto extracted = composite->removeChild(children[removeIdx].get());
                 if (extracted) {
+                    // Place extracted figure back at same world position
                     scene.addFigure(std::move(extracted));
                 }
+            }
+
+            // ── Add a scene figure into this composite ──────────────────────
+            ImGui::Separator();
+            ImGui::TextUnformatted(u8"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0444\u0438\u0433\u0443\u0440\u0443:");
+            const auto& allFigs = scene.getFigures();
+            for (const auto& fig : allFigs) {
+                if (fig.get() == composite) continue; // skip self
+                if (dynamic_cast<core::CompositeFigure*>(fig.get())) continue; // skip other composites
+                ImGui::PushID(fig.get());
+                // Show a small identifying label (use bounding box position)
+                sf::FloatRect b = fig->getBoundingBox();
+                char label[64];
+                std::snprintf(label, sizeof(label), "(%.0f,%.0f)", b.left + b.width/2.f, b.top + b.height/2.f);
+                if (ImGui::SmallButton(label)) {
+                    // We need the unique_ptr: find it in scene
+                    std::unique_ptr<core::Figure> owned;
+                    for (auto& up : const_cast<std::vector<std::unique_ptr<core::Figure>>&>(allFigs)) {
+                        if (up.get() == fig.get()) { owned = std::move(up); break; }
+                    }
+                    scene.removeFigure(fig.get());
+                    if (owned) composite->addChild(std::move(owned));
+                    ImGui::PopID();
+                    break; // iterator invalidated
+                }
+                ImGui::PopID();
             }
 
             ImGui::TreePop();
@@ -140,25 +198,25 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
                 ImGui::Text(u8"\u041e\u0442\u0440\u0435\u0437\u043e\u043a %zu", i + 1);
 
                 if (ImGui::InputFloat(u8"\u0414\u043b\u0438\u043d\u0430", &segs[i].length, 1.f, 10.f, "%.1f",
-                    ImGuiInputTextFlags_EnterReturnsTrue)) {
+                                      ImGuiInputTextFlags_EnterReturnsTrue)) {
                     segs[i].length = std::max(1.f, segs[i].length);
                     changed = true;
                 }
 
                 if (i == 0) {
-                    if (ImGui::InputFloat(u8"\u041d\u0430\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 (\u0430\u0431\u0441)", &segs[i].angle, 1.f, 10.f, "%.1f\xc2\xb0",
-                        ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    if (ImGui::InputFloat(u8"\u041d\u0430\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 (\u0430\u0431\u0441)",
+                                         &segs[i].angle, 1.f, 10.f, "%.1f\xc2\xb0",
+                                         ImGuiInputTextFlags_EnterReturnsTrue))
                         changed = true;
-                    }
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip(u8"\u0410\u0431\u0441\u043e\u043b\u044e\u0442\u043d\u044b\u0439 \u0443\u0433\u043e\u043b \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u043e\u0442\u0440\u0435\u0437\u043a\u0430 (\u0433\u0440\u0430\u0434\u0443\u0441\u044b \u043e\u0442 +X)");
+                        ImGui::SetTooltip(u8"\u0410\u0431\u0441\u043e\u043b\u044e\u0442\u043d\u044b\u0439 \u0443\u0433\u043e\u043b \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u043e\u0442\u0440\u0435\u0437\u043a\u0430 (\u0433\u0440\u0430\u0434. \u043e\u0442 +X)");
                 } else {
-                    if (ImGui::InputFloat(u8"\u0423\u0433\u043e\u043b \u043f\u043e\u0432\u043e\u0440\u043e\u0442\u0430", &segs[i].angle, 1.f, 10.f, "%.1f\xc2\xb0",
-                        ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    if (ImGui::InputFloat(u8"\u0423\u0433\u043e\u043b \u043f\u043e\u0432\u043e\u0440\u043e\u0442\u0430",
+                                         &segs[i].angle, 1.f, 10.f, "%.1f\xc2\xb0",
+                                         ImGuiInputTextFlags_EnterReturnsTrue))
                         changed = true;
-                    }
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip(u8"\u0423\u0433\u043e\u043b \u043f\u043e\u0432\u043e\u0440\u043e\u0442\u0430 \u043e\u0442 \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0433\u043e \u043e\u0442\u0440\u0435\u0437\u043a\u0430 (\u043e\u0442\u0440\u0438\u0446\u0430\u0442\u0435\u043b\u044c\u043d\u044b\u0439 = \u043f\u043e \u0447\u0430\u0441\u043e\u0432\u043e\u0439)");
+                        ImGui::SetTooltip(u8"\u0423\u0433\u043e\u043b \u043f\u043e\u0432\u043e\u0440\u043e\u0442\u0430 \u043e\u0442 \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0433\u043e \u043e\u0442\u0440\u0435\u0437\u043a\u0430");
                 }
 
                 ImGui::PopID();
@@ -176,7 +234,6 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
     ImGui::TextUnformatted(u8"\u0422\u043e\u0447\u043a\u0430 \u043f\u0440\u0438\u0432\u044f\u0437\u043a\u0438");
     ImGui::SameLine();
     ImGui::Checkbox(u8"\u0417\u0430\u043a\u0440\u0435\u043f\u0438\u0442\u044c \u043a \u0444\u0438\u0433\u0443\u0440\u0435", &m_lockAnchor);
-
     float anchor[2] = { selectedFigure->anchor.x, selectedFigure->anchor.y };
     if (ImGui::DragFloat2("##Anchor", anchor, 1.0f)) {
         if (m_lockAnchor)
@@ -184,8 +241,8 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         else
             selectedFigure->setAnchorKeepAbsolute(sf::Vector2f(anchor[0], anchor[1]));
     }
-    if (ImGui::Button(u8"\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u0440\u0438\u0432\u044f\u0437\u043a\u0443")) selectedFigure->resetAnchor();
-
+    if (ImGui::Button(u8"\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u0440\u0438\u0432\u044f\u0437\u043a\u0443"))
+        selectedFigure->resetAnchor();
     ImGui::Spacing();
 
     // ── Vertex editing (non-composite, non-uniform) ───────────────────────────────
@@ -238,7 +295,6 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         selectedFigure->rotationAngle = rotation;
     if (ImGui::Button(u8"\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u043e\u0432\u043e\u0440\u043e\u0442"))
         selectedFigure->rotationAngle = 0.f;
-
     ImGui::Spacing();
 
     // ── Scale ────────────────────────────────────────────────────────────────────────
@@ -321,7 +377,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
                     if (hasLengths && i < displayLengths.size()) {
                         ImGui::SetNextItemWidth(-1.f);
                         if (ImGui::InputFloat(u8"\u0414\u043b\u0438\u043d\u0430", &displayLengths[i], 1.f, 10.f, "%.1f",
-                            ImGuiInputTextFlags_EnterReturnsTrue)) {
+                                              ImGuiInputTextFlags_EnterReturnsTrue)) {
                             if (displayLengths[i] < 1.f) displayLengths[i] = 1.f;
                             if (lockedSides[i]) lockedLengths[i] = displayLengths[i];
                             selectedFigure->highlightEdge(i);
@@ -362,6 +418,42 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
             ImGui::TreePop();
         }
         ImGui::Spacing();
+    }
+
+    // ── Add this figure to an existing composite ──────────────────────────────────
+    if (!composite) {
+        std::vector<core::CompositeFigure*> composites;
+        for (const auto& fig : scene.getFigures()) {
+            auto* c = dynamic_cast<core::CompositeFigure*>(fig.get());
+            if (c) composites.push_back(c);
+        }
+        if (!composites.empty()) {
+            ImGui::Separator();
+            if (ImGui::TreeNodeEx(u8"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0432 \u0441\u043e\u0441\u0442\u0430\u0432\u043d\u0443\u044e", ImGuiTreeNodeFlags_None)) {
+                for (size_t ci = 0; ci < composites.size(); ++ci) {
+                    ImGui::PushID((int)ci);
+                    char label[64];
+                    std::snprintf(label, sizeof(label), u8"\u0421\u043e\u0441\u0442\u0430\u0432\u043d\u0430\u044f %zu", ci + 1);
+                    if (ImGui::Button(label)) {
+                        core::CompositeFigure* targetComp = composites[ci];
+                        core::Figure* rawFig = selectedFigure;
+                        std::unique_ptr<core::Figure> owned;
+                        for (auto& up : const_cast<std::vector<std::unique_ptr<core::Figure>>&>(scene.getFigures())) {
+                            if (up.get() == rawFig) { owned = std::move(up); break; }
+                        }
+                        scene.removeFigure(rawFig);
+                        if (owned) targetComp->addChild(std::move(owned));
+                        ImGui::PopID();
+                        ImGui::TreePop();
+                        ImGui::End();
+                        return fitRequested;
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::TreePop();
+            }
+            ImGui::Spacing();
+        }
     }
 
     // ── Bounding box ───────────────────────────────────────────────────────────────────

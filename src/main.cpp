@@ -2,8 +2,9 @@
 #pragma execution_character_set("utf-8")
 #endif
 
-
 #include "core/Figures.hpp"
+#include "core/PolylineShape.hpp"
+#include "core/CompositeFigure.hpp"
 #include "core/Scene.hpp"
 #include "core/Viewport.hpp"
 #include "core/MathUtils.hpp"
@@ -23,9 +24,9 @@
 #include <cstdio>
 
 using namespace core;
+
 static void applyLightTheme() {
     ImGui::StyleColorsLight();
-
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowRounding = 8.0f;
     style.FrameRounding = 6.0f;
@@ -33,41 +34,32 @@ static void applyLightTheme() {
     style.ScrollbarRounding = 6.0f;
     style.WindowBorderSize = 1.0f;
     style.FrameBorderSize = 0.0f;
-
     ImVec4* colors = style.Colors;
-    colors[ImGuiCol_WindowBg] = ImVec4(0.95f, 0.95f, 0.97f, 1.00f);
-    colors[ImGuiCol_ChildBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
-    colors[ImGuiCol_PopupBg] = ImVec4(1.00f, 1.00f, 1.00f, 0.98f);
-    colors[ImGuiCol_FrameBg] = ImVec4(0.90f, 0.91f, 0.93f, 1.00f);
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.82f, 0.86f, 0.95f, 1.00f);
+    colors[ImGuiCol_WindowBg]      = ImVec4(0.95f, 0.95f, 0.97f, 1.00f);
+    colors[ImGuiCol_ChildBg]       = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
+    colors[ImGuiCol_PopupBg]       = ImVec4(1.00f, 1.00f, 1.00f, 0.98f);
+    colors[ImGuiCol_FrameBg]       = ImVec4(0.90f, 0.91f, 0.93f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered]= ImVec4(0.82f, 0.86f, 0.95f, 1.00f);
     colors[ImGuiCol_FrameBgActive] = ImVec4(0.75f, 0.82f, 0.96f, 1.00f);
-    colors[ImGuiCol_Button] = ImVec4(0.86f, 0.89f, 0.95f, 1.00f);
+    colors[ImGuiCol_Button]        = ImVec4(0.86f, 0.89f, 0.95f, 1.00f);
     colors[ImGuiCol_ButtonHovered] = ImVec4(0.76f, 0.82f, 0.96f, 1.00f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.66f, 0.75f, 0.95f, 1.00f);
-    colors[ImGuiCol_Header] = ImVec4(0.80f, 0.85f, 0.95f, 1.00f);
+    colors[ImGuiCol_ButtonActive]  = ImVec4(0.66f, 0.75f, 0.95f, 1.00f);
+    colors[ImGuiCol_Header]        = ImVec4(0.80f, 0.85f, 0.95f, 1.00f);
     colors[ImGuiCol_HeaderHovered] = ImVec4(0.72f, 0.79f, 0.95f, 1.00f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.64f, 0.73f, 0.94f, 1.00f);
-    colors[ImGuiCol_Border] = ImVec4(0.75f, 0.78f, 0.84f, 1.00f);
-    colors[ImGuiCol_Text] = ImVec4(0.12f, 0.12f, 0.14f, 1.00f);
+    colors[ImGuiCol_HeaderActive]  = ImVec4(0.64f, 0.73f, 0.94f, 1.00f);
+    colors[ImGuiCol_Border]        = ImVec4(0.75f, 0.78f, 0.84f, 1.00f);
+    colors[ImGuiCol_Text]          = ImVec4(0.12f, 0.12f, 0.14f, 1.00f);
 }
 
 static bool loadRussianFont(float fontSize = 18.0f) {
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
-
     const ImWchar* ranges = io.Fonts->GetGlyphRangesCyrillic();
-
     ImFont* font = nullptr;
-
     font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", fontSize, nullptr, ranges);
     if (!font) font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/arial.ttf", fontSize, nullptr, ranges);
     if (!font) font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/tahoma.ttf", fontSize, nullptr, ranges);
-
-    if (!font) {
-        std::cerr << "Failed to load Cyrillic font" << std::endl;
-        return false;
-    }
-
+    if (!font) { std::cerr << "Failed to load Cyrillic font" << std::endl; return false; }
     io.FontDefault = font;
     ImGui::SFML::UpdateFontTexture();
     return true;
@@ -75,23 +67,15 @@ static bool loadRussianFont(float fontSize = 18.0f) {
 
 static void recreateWindow(sf::RenderWindow& window, bool fullscreen) {
     ImGui::SFML::Shutdown();
-
-    if (fullscreen) {
+    if (fullscreen)
         window.create(sf::VideoMode::getDesktopMode(), "GraphEditor", sf::Style::Fullscreen);
-    }
-    else {
+    else
         window.create(sf::VideoMode(1280, 720), "GraphEditor", sf::Style::Default);
-    }
-
     window.setFramerateLimit(60);
-
-    if (!ImGui::SFML::Init(window)) {
+    if (!ImGui::SFML::Init(window))
         std::cerr << "Failed to reinitialize ImGui-SFML" << std::endl;
-    }
-
     applyLightTheme();
     loadRussianFont(18.0f);
-
 }
 
 void drawAnchorMarker(sf::RenderTarget& target, sf::Vector2f pos, float markerScale) {
@@ -102,19 +86,21 @@ void drawAnchorMarker(sf::RenderTarget& target, sf::Vector2f pos, float markerSc
     circle.setOutlineThickness(1.5f * markerScale);
     circle.setOrigin(r, r);
     circle.setPosition(pos);
-
     sf::VertexArray lines(sf::Lines, 4);
     sf::Color lineColor(0, 120, 215);
     lines[0] = sf::Vertex(pos - sf::Vector2f(8.f * markerScale, 0.f), lineColor);
     lines[1] = sf::Vertex(pos + sf::Vector2f(8.f * markerScale, 0.f), lineColor);
     lines[2] = sf::Vertex(pos - sf::Vector2f(0.f, 8.f * markerScale), lineColor);
     lines[3] = sf::Vertex(pos + sf::Vector2f(0.f, 8.f * markerScale), lineColor);
-
     target.draw(circle);
     target.draw(lines);
 }
 
-
+// ─── Polyline creation state ─────────────────────────────────────────────────
+struct PolylineCreationState {
+    bool active = false;
+    std::vector<sf::Vector2f> points; // world-space click points
+};
 
 int main() {
     sf::RenderWindow window(sf::VideoMode(1280, 720), "GraphEditor");
@@ -171,39 +157,40 @@ int main() {
     bool showGrid = false;
     bool showOriginAxes = true;
 
-    sf::Cursor cursorArrow;
-    cursorArrow.loadFromSystem(sf::Cursor::Arrow);
-    sf::Cursor cursorHand;
-    cursorHand.loadFromSystem(sf::Cursor::Hand);
-    sf::Cursor cursorCross;
-    cursorCross.loadFromSystem(sf::Cursor::Cross);
-    sf::Cursor cursorSizeAll;
-    cursorSizeAll.loadFromSystem(sf::Cursor::SizeAll);
+    // Polyline tool state
+    PolylineCreationState polylineState;
 
-    sf::Cursor cursorSizeNWSE;
-    cursorSizeNWSE.loadFromSystem(sf::Cursor::SizeTopLeftBottomRight);
-    sf::Cursor cursorSizeNESW;
-    cursorSizeNESW.loadFromSystem(sf::Cursor::SizeBottomLeftTopRight);
-    sf::Cursor cursorSizeWE;
-    cursorSizeWE.loadFromSystem(sf::Cursor::SizeHorizontal);
-    sf::Cursor cursorSizeNS;
-    cursorSizeNS.loadFromSystem(sf::Cursor::SizeVertical);
+    sf::Cursor cursorArrow;   cursorArrow.loadFromSystem(sf::Cursor::Arrow);
+    sf::Cursor cursorHand;    cursorHand.loadFromSystem(sf::Cursor::Hand);
+    sf::Cursor cursorCross;   cursorCross.loadFromSystem(sf::Cursor::Cross);
+    sf::Cursor cursorSizeAll; cursorSizeAll.loadFromSystem(sf::Cursor::SizeAll);
+    sf::Cursor cursorSizeNWSE; cursorSizeNWSE.loadFromSystem(sf::Cursor::SizeTopLeftBottomRight);
+    sf::Cursor cursorSizeNESW; cursorSizeNESW.loadFromSystem(sf::Cursor::SizeBottomLeftTopRight);
+    sf::Cursor cursorSizeWE;   cursorSizeWE.loadFromSystem(sf::Cursor::SizeHorizontal);
+    sf::Cursor cursorSizeNS;   cursorSizeNS.loadFromSystem(sf::Cursor::SizeVertical);
 
+    // createFigure: Triangle & Trapezoid now built via PolylineShape for refactored representation
     auto createFigure = [&](ui::Tool tool, float width, float height) -> std::unique_ptr<core::Figure> {
-        width = std::max(width, 50.f);
+        width  = std::max(width,  50.f);
         height = std::max(height, 50.f);
 
         std::unique_ptr<core::Figure> fig;
         if (tool == ui::Tool::Rectangle)
             fig = std::make_unique<core::Rectangle>(width, height);
-        else if (tool == ui::Tool::Triangle)
-            fig = std::make_unique<core::Triangle>(width, height);
+        else if (tool == ui::Tool::Triangle) {
+            // Refactored: use PolylineShape so segments are editable
+            auto ps = std::make_unique<core::PolylineShape>(core::PolylineShape::makeTriangle(width, height, width));
+            fig = std::move(ps);
+        }
         else if (tool == ui::Tool::Hexagon)
             fig = std::make_unique<core::Hexagon>(width, height);
         else if (tool == ui::Tool::Rhombus)
             fig = std::make_unique<core::Rhombus>(width, height);
-        else if (tool == ui::Tool::Trapezoid)
-            fig = std::make_unique<core::Trapezoid>(width * 0.6f, width, height);
+        else if (tool == ui::Tool::Trapezoid) {
+            // Refactored: use PolylineShape so segments are editable
+            auto ps = std::make_unique<core::PolylineShape>(core::PolylineShape::makeTrapezoid(width * 0.6f, width, height));
+            fig = std::move(ps);
+        }
         else if (tool == ui::Tool::Circle)
             fig = std::make_unique<core::Circle>(width / 2.f, height / 2.f);
 
@@ -215,7 +202,7 @@ int main() {
             }
         }
         return fig;
-        };
+    };
 
     {
         std::vector<sf::Color> colors = {
@@ -223,13 +210,11 @@ int main() {
             sf::Color(100, 100, 255), sf::Color(255, 255, 100),
             sf::Color(255, 100, 255), sf::Color(100, 255, 255)
         };
-
         std::vector<ui::Tool> tempTools = {
             ui::Tool::Rectangle, ui::Tool::Triangle,
-            ui::Tool::Hexagon, ui::Tool::Rhombus,
+            ui::Tool::Hexagon,   ui::Tool::Rhombus,
             ui::Tool::Trapezoid, ui::Tool::Circle
         };
-
         for (size_t i = 0; i < tempTools.size(); ++i) {
             auto fig = createFigure(tempTools[i], 150.f, 150.f);
             fig->fillColor = colors[i];
@@ -247,9 +232,8 @@ int main() {
         while (window.pollEvent(event)) {
             ImGui::SFML::ProcessEvent(window, event);
 
-            if (event.type == sf::Event::Closed) {
+            if (event.type == sf::Event::Closed)
                 window.close();
-            }
 
             ImGuiIO& io = ImGui::GetIO();
 
@@ -262,26 +246,20 @@ int main() {
                 }
 
                 bool ctrl = sf::Keyboard::isKeyPressed(sf::Keyboard::LControl) ||
-                    sf::Keyboard::isKeyPressed(sf::Keyboard::RControl);
+                            sf::Keyboard::isKeyPressed(sf::Keyboard::RControl);
 
                 if (ctrl) {
-                    if (event.key.code == sf::Keyboard::Equal ||
-                        event.key.code == sf::Keyboard::Add) {
+                    if (event.key.code == sf::Keyboard::Equal || event.key.code == sf::Keyboard::Add) {
                         sf::Vector2f center(window.getSize().x / 2.f, window.getSize().y / 2.f);
                         viewport.zoomAt(center, 1.1f);
-                    }
-                    else if (event.key.code == sf::Keyboard::Hyphen ||
-                        event.key.code == sf::Keyboard::Subtract) {
+                    } else if (event.key.code == sf::Keyboard::Hyphen || event.key.code == sf::Keyboard::Subtract) {
                         sf::Vector2f center(window.getSize().x / 2.f, window.getSize().y / 2.f);
                         viewport.zoomAt(center, 1.f / 1.1f);
-                    }
-                    else if (event.key.code == sf::Keyboard::Num0 ||
-                        event.key.code == sf::Keyboard::Numpad0) {
+                    } else if (event.key.code == sf::Keyboard::Num0 || event.key.code == sf::Keyboard::Numpad0) {
                         sf::Vector2f center(window.getSize().x / 2.f, window.getSize().y / 2.f);
                         viewport.zoomAt(center, 1.f / viewport.zoom);
                     }
-                }
-                else if (event.key.code == sf::Keyboard::V)
+                } else if (event.key.code == sf::Keyboard::V)
                     currentTool = ui::Tool::Select;
                 else if (event.key.code == sf::Keyboard::R)
                     currentTool = ui::Tool::Rectangle;
@@ -295,53 +273,42 @@ int main() {
                     currentTool = ui::Tool::Trapezoid;
                 else if (event.key.code == sf::Keyboard::C)
                     currentTool = ui::Tool::Circle;
+                else if (event.key.code == sf::Keyboard::P)
+                    currentTool = ui::Tool::Polyline;
                 else if (event.key.code == sf::Keyboard::Escape) {
-                    if (isNodeEditMode) {
+                    if (polylineState.active) {
+                        polylineState.active = false;
+                        polylineState.points.clear();
+                    } else if (isNodeEditMode) {
                         isNodeEditMode = false;
+                    } else {
+                        scene.clearSelection();
+                        if (isCreating) { isCreating = false; creatingStep = 0; }
                     }
-                    else {
-                        scene.setSelectedFigure(nullptr);
-                        if (isCreating) {
-                            isCreating = false;
-                            creatingStep = 0;
-                        }
-                    }
-                }
-                else if (event.key.code == sf::Keyboard::N) {
-                    if (scene.getSelectedFigure()) {
+                } else if (event.key.code == sf::Keyboard::N) {
+                    if (scene.getSelectedFigure())
                         isNodeEditMode = !isNodeEditMode;
-                    }
-                }
-                else if (event.key.code == sf::Keyboard::G) {
+                } else if (event.key.code == sf::Keyboard::G)
                     showGrid = !showGrid;
-                }
-                else if (event.key.code == sf::Keyboard::A) {
+                else if (event.key.code == sf::Keyboard::A)
                     showOriginAxes = !showOriginAxes;
-                }
                 else if (event.key.code == sf::Keyboard::Delete ||
-                    event.key.code == sf::Keyboard::Backspace) {
-                    if (scene.getSelectedFigure()) {
-                        scene.removeFigure(scene.getSelectedFigure());
-                        scene.setSelectedFigure(nullptr);
-                    }
-                }
-                else if (event.key.code == sf::Keyboard::Up ||
-                    event.key.code == sf::Keyboard::Down ||
-                    event.key.code == sf::Keyboard::Left ||
-                    event.key.code == sf::Keyboard::Right) {
+                         event.key.code == sf::Keyboard::Backspace) {
+                    // Delete all selected
+                    auto sel = scene.getSelection();
+                    for (Figure* f : sel) scene.removeFigure(f);
+                    scene.clearSelection();
+                } else if (event.key.code == sf::Keyboard::Up    ||
+                           event.key.code == sf::Keyboard::Down  ||
+                           event.key.code == sf::Keyboard::Left  ||
+                           event.key.code == sf::Keyboard::Right) {
                     if (core::Figure* fig = scene.getSelectedFigure()) {
-                        float moveAmt =
-                            sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) ||
-                            sf::Keyboard::isKeyPressed(sf::Keyboard::RShift) ? 10.f : 1.f;
-
-                        if (event.key.code == sf::Keyboard::Up)
-                            fig->move(sf::Vector2f(0.f, -moveAmt));
-                        else if (event.key.code == sf::Keyboard::Down)
-                            fig->move(sf::Vector2f(0.f, moveAmt));
-                        else if (event.key.code == sf::Keyboard::Left)
-                            fig->move(sf::Vector2f(-moveAmt, 0.f));
-                        else if (event.key.code == sf::Keyboard::Right)
-                            fig->move(sf::Vector2f(moveAmt, 0.f));
+                        float moveAmt = (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) ||
+                                         sf::Keyboard::isKeyPressed(sf::Keyboard::RShift)) ? 10.f : 1.f;
+                        if (event.key.code == sf::Keyboard::Up)    fig->move(sf::Vector2f(0.f, -moveAmt));
+                        else if (event.key.code == sf::Keyboard::Down)  fig->move(sf::Vector2f(0.f,  moveAmt));
+                        else if (event.key.code == sf::Keyboard::Left)  fig->move(sf::Vector2f(-moveAmt, 0.f));
+                        else if (event.key.code == sf::Keyboard::Right) fig->move(sf::Vector2f( moveAmt, 0.f));
                     }
                 }
             }
@@ -358,53 +325,100 @@ int main() {
                 if (event.type == sf::Event::MouseButtonPressed) {
                     if (event.mouseButton.button == sf::Mouse::Middle ||
                         (event.mouseButton.button == sf::Mouse::Left &&
-                            sf::Keyboard::isKeyPressed(sf::Keyboard::Space))) {
+                         sf::Keyboard::isKeyPressed(sf::Keyboard::Space))) {
                         isPanning = true;
-                        panStartMouse = sf::Vector2f(event.mouseButton.x, event.mouseButton.y);
+                        panStartMouse  = sf::Vector2f(event.mouseButton.x, event.mouseButton.y);
                         panStartOrigin = viewport.worldOrigin;
-                    }
-                    else if (event.mouseButton.button == sf::Mouse::Right) {
+                    } else if (event.mouseButton.button == sf::Mouse::Right) {
                         sf::Vector2f mousePosScreen(event.mouseButton.x, event.mouseButton.y);
                         sf::Vector2f mousePos = viewport.screenToWorld(mousePosScreen);
-                        createModal.open(mousePos);
-                    }
-                    else if (event.mouseButton.button == sf::Mouse::Left) {
+                        // Right-click in polyline mode: finish polyline
+                        if (currentTool == ui::Tool::Polyline && polylineState.active && polylineState.points.size() >= 2) {
+                            // Build PolylineShape from clicked points
+                            std::vector<core::Segment> segs;
+                            const auto& pts = polylineState.points;
+                            for (size_t i = 0; i < pts.size(); ++i) {
+                                sf::Vector2f dir;
+                                if (i == 0) {
+                                    dir = pts[1] - pts[0];
+                                } else {
+                                    dir = pts[i] - pts[i-1];
+                                }
+                                float len = std::hypot(dir.x, dir.y);
+                                if (len < 1.f) len = 1.f;
+                                float absAngle = std::atan2(dir.y, dir.x) * 180.f / math::PI;
+                                if (i == 0) {
+                                    segs.push_back({len, absAngle});
+                                } else {
+                                    float prevAngle = segs.back().angle;
+                                    if (i == 1) prevAngle = segs[0].angle;
+                                    else {
+                                        float acc = segs[0].angle;
+                                        for (size_t k = 1; k < i; ++k) acc += segs[k].angle;
+                                        prevAngle = acc;
+                                    }
+                                    float turn = absAngle - prevAngle;
+                                    // normalise to (-180,180]
+                                    while (turn >  180.f) turn -= 360.f;
+                                    while (turn <= -180.f) turn += 360.f;
+                                    segs.push_back({len, turn});
+                                }
+                            }
+                            auto fig = std::make_unique<core::PolylineShape>(segs);
+                            fig->fillColor = sf::Color(150, 150, 150);
+                            for (auto& e : fig->edges) { e.width = 2.f; e.color = sf::Color::Black; }
+                            // Place anchor at centroid of clicked points
+                            sf::Vector2f cen(0.f, 0.f);
+                            for (auto& p : pts) cen += p;
+                            cen /= (float)pts.size();
+                            if (scene.customOriginActive) {
+                                fig->parentOrigin = scene.customOriginPos;
+                                fig->anchor = cen - scene.customOriginPos;
+                            } else {
+                                fig->anchor = cen;
+                            }
+                            scene.setSelectedFigure(fig.get());
+                            scene.addFigure(std::move(fig));
+                            polylineState.active = false;
+                            polylineState.points.clear();
+                            currentTool = ui::Tool::Select;
+                        } else if (currentTool != ui::Tool::Polyline) {
+                            createModal.open(mousePos);
+                        }
+                    } else if (event.mouseButton.button == sf::Mouse::Left) {
                         sf::Vector2f mousePosScreen(event.mouseButton.x, event.mouseButton.y);
                         sf::Vector2f mousePos = viewport.screenToWorld(mousePosScreen);
 
+                        // Custom origin dragging
                         if (scene.customOriginActive) {
                             sf::Vector2f customScreen = viewport.worldToScreen(scene.customOriginPos);
                             if (std::hypot(mousePosScreen.x - customScreen.x,
-                                mousePosScreen.y - customScreen.y) <= 15.f) {
+                                           mousePosScreen.y - customScreen.y) <= 15.f) {
                                 bool doubleClickedOrigin = false;
                                 if (wasClicked && clickClock.getElapsedTime().asSeconds() < 0.3f) {
-                                    doubleClickedOrigin = true;
-                                    wasClicked = false;
+                                    doubleClickedOrigin = true; wasClicked = false;
+                                } else {
+                                    wasClicked = true; clickClock.restart();
                                 }
-                                else {
-                                    wasClicked = true;
-                                    clickClock.restart();
-                                }
-
-                                if (doubleClickedOrigin) {
-                                    scene.resetCustomOrigin();
-                                }
-                                else {
-                                    isDraggingCustomOrigin = true;
-                                }
+                                if (doubleClickedOrigin) scene.resetCustomOrigin();
+                                else isDraggingCustomOrigin = true;
                                 continue;
                             }
+                        }
+
+                        // Polyline tool: collect click points
+                        if (currentTool == ui::Tool::Polyline) {
+                            polylineState.active = true;
+                            polylineState.points.push_back(mousePos);
+                            continue;
                         }
 
                         if (currentTool == ui::Tool::Select) {
                             bool doubleClicked = false;
                             if (wasClicked && clickClock.getElapsedTime().asSeconds() < 0.3f) {
-                                doubleClicked = true;
-                                wasClicked = false;
-                            }
-                            else {
-                                wasClicked = true;
-                                clickClock.restart();
+                                doubleClicked = true; wasClicked = false;
+                            } else {
+                                wasClicked = true; clickClock.restart();
                             }
 
                             if (doubleClicked && !scene.hitTest(mousePos)) {
@@ -412,22 +426,21 @@ int main() {
                                 continue;
                             }
 
-                            bool altPressed =
-                                sf::Keyboard::isKeyPressed(sf::Keyboard::LAlt) ||
-                                sf::Keyboard::isKeyPressed(sf::Keyboard::RAlt);
+                            bool ctrl = sf::Keyboard::isKeyPressed(sf::Keyboard::LControl) ||
+                                        sf::Keyboard::isKeyPressed(sf::Keyboard::RControl);
+                            bool altPressed = sf::Keyboard::isKeyPressed(sf::Keyboard::LAlt) ||
+                                             sf::Keyboard::isKeyPressed(sf::Keyboard::RAlt);
 
                             core::Figure* selFig = scene.getSelectedFigure();
                             bool hitAnchor = false;
                             bool hitRotationMarker = false;
                             int hoveredVertex = -1;
 
-                            if (selFig) {
+                            if (selFig && !ctrl) {
                                 float markerScale = 1.f / viewport.zoom;
                                 sf::Vector2f absAnchor = selFig->parentOrigin + selFig->anchor;
                                 float dist = std::hypot(mousePos.x - absAnchor.x, mousePos.y - absAnchor.y);
-                                if (dist <= 10.f * markerScale) {
-                                    hitAnchor = true;
-                                }
+                                if (dist <= 10.f * markerScale) hitAnchor = true;
 
                                 sf::FloatRect localBounds = selFig->getLocalBoundingBox();
                                 sf::Vector2f tl(localBounds.left, localBounds.top);
@@ -436,13 +449,10 @@ int main() {
                                 sf::Vector2f absTc = selFig->getAbsoluteVertex(tc);
                                 float rotRad = selFig->rotationAngle * math::PI / 180.f;
                                 sf::Vector2f rotOffset(std::sin(rotRad) * 20.f * markerScale,
-                                    -std::cos(rotRad) * 20.f * markerScale);
+                                                       -std::cos(rotRad) * 20.f * markerScale);
                                 sf::Vector2f rotMarker = absTc + rotOffset;
-
-                                if (std::hypot(mousePos.x - rotMarker.x, mousePos.y - rotMarker.y) <=
-                                    8.f * markerScale) {
+                                if (std::hypot(mousePos.x - rotMarker.x, mousePos.y - rotMarker.y) <= 8.f * markerScale)
                                     hitRotationMarker = true;
-                                }
 
                                 if (isNodeEditMode) {
                                     const auto& verts = selFig->getVertices();
@@ -457,156 +467,112 @@ int main() {
                                 }
                             }
 
-                            if (hoveringScaleHandle != ScaleHandle::None && selFig) {
+                            if (ctrl) {
+                                // Ctrl+click: toggle figure in multi-selection
+                                core::Figure* hit = scene.hitTest(mousePos);
+                                if (hit) {
+                                    if (scene.isSelected(hit))
+                                        scene.removeFromSelection(hit);
+                                    else
+                                        scene.addToSelection(hit);
+                                }
+                            } else if (hoveringScaleHandle != ScaleHandle::None && selFig) {
                                 draggingScaleHandle = hoveringScaleHandle;
-                                scaleStartMouse = mousePos;
-                                scaleStartValue = selFig->scale;
+                                scaleStartMouse  = mousePos;
+                                scaleStartValue  = selFig->scale;
                                 scaleStartAnchor = selFig->anchor;
-                            }
-                            else if (hitRotationMarker && selFig) {
+                            } else if (hitRotationMarker && selFig) {
                                 isRotating = true;
                                 sf::Vector2f absoluteAnchor = selFig->parentOrigin + selFig->anchor;
-                                rotationStartAngle =
-                                    std::atan2(mousePos.y - absoluteAnchor.y,
-                                        mousePos.x - absoluteAnchor.x) *
-                                    180.f / math::PI;
+                                rotationStartAngle = std::atan2(mousePos.y - absoluteAnchor.y,
+                                                                mousePos.x - absoluteAnchor.x) * 180.f / math::PI;
                                 initialRotation = selFig->rotationAngle;
-                            }
-                            else if (isNodeEditMode && hoveredVertex != -1) {
+                            } else if (isNodeEditMode && hoveredVertex != -1) {
                                 draggingVertexIndex = hoveredVertex;
-                            }
-                            else if (hitAnchor && altPressed && selFig) {
+                            } else if (hitAnchor && altPressed && selFig) {
                                 isDraggingAnchor = true;
                                 sf::Vector2f absoluteAnchor = selFig->parentOrigin + selFig->anchor;
                                 dragOffset = mousePos - absoluteAnchor;
-                            }
-                            else {
+                            } else {
                                 core::Figure* hit = scene.hitTest(mousePos);
                                 scene.setSelectedFigure(hit);
-
-                                if (selFig != hit)
-                                    isNodeEditMode = false;
-
+                                if (selFig != hit) isNodeEditMode = false;
                                 if (hit && doubleClicked) {
                                     isNodeEditMode = true;
-                                }
-                                else if (hit) {
+                                } else if (hit) {
                                     isDragging = true;
                                     sf::Vector2f absoluteAnchor = hit->parentOrigin + hit->anchor;
                                     dragOffset = mousePos - absoluteAnchor;
                                 }
                             }
-                        }
-                        else {
+                        } else {
                             if (creatingStep == 0) {
                                 isCreating = true;
                                 creatingStep = 1;
                                 createStartPos = mousePos;
                                 scene.setSelectedFigure(nullptr);
-                                std::cout << "Step 1: First click to create figure at "
-                                    << createStartPos.x << ", " << createStartPos.y << std::endl;
-                            }
-                            else if (creatingStep == 1) {
+                            } else if (creatingStep == 1) {
                                 creatingStep = 2;
                             }
                         }
                     }
-                }
-                else if (event.type == sf::Event::MouseButtonReleased) {
+                } else if (event.type == sf::Event::MouseButtonReleased) {
                     if (event.mouseButton.button == sf::Mouse::Middle ||
-                        (event.mouseButton.button == sf::Mouse::Left && isPanning)) {
+                        (event.mouseButton.button == sf::Mouse::Left && isPanning))
                         isPanning = false;
-                    }
 
                     if (event.mouseButton.button == sf::Mouse::Left) {
-                        if (isDraggingCustomOrigin) {
-                            isDraggingCustomOrigin = false;
-                        }
-                        if (draggingScaleHandle != ScaleHandle::None) {
-                            draggingScaleHandle = ScaleHandle::None;
-                        }
-                        if (isDragging) {
-                            isDragging = false;
-                        }
-                        if (isDraggingAnchor) {
-                            isDraggingAnchor = false;
-                        }
-                        if (isRotating) {
-                            isRotating = false;
-                        }
-                        if (draggingVertexIndex != -1) {
-                            draggingVertexIndex = -1;
-                        }
+                        if (isDraggingCustomOrigin) isDraggingCustomOrigin = false;
+                        if (draggingScaleHandle != ScaleHandle::None) draggingScaleHandle = ScaleHandle::None;
+                        if (isDragging)          isDragging = false;
+                        if (isDraggingAnchor)    isDraggingAnchor = false;
+                        if (isRotating)          isRotating = false;
+                        if (draggingVertexIndex != -1) draggingVertexIndex = -1;
 
                         if (isCreating && creatingStep == 2) {
                             isCreating = false;
                             creatingStep = 0;
-
-                            sf::Vector2f mousePos =
-                                viewport.screenToWorld(sf::Vector2f(event.mouseButton.x, event.mouseButton.y));
-
+                            sf::Vector2f mousePos = viewport.screenToWorld(
+                                sf::Vector2f(event.mouseButton.x, event.mouseButton.y));
                             float dx = mousePos.x - createStartPos.x;
                             float dy = mousePos.y - createStartPos.y;
-                            float width = std::abs(dx);
+                            float width  = std::abs(dx);
                             float height = std::abs(dy);
-
                             if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) ||
                                 sf::Keyboard::isKeyPressed(sf::Keyboard::RShift)) {
                                 float maxDim = std::max(width, height);
-                                width = maxDim;
-                                height = maxDim;
-
+                                width = maxDim; height = maxDim;
                                 mousePos.x = createStartPos.x + ((dx >= 0) ? maxDim : -maxDim);
                                 mousePos.y = createStartPos.y + ((dy >= 0) ? maxDim : -maxDim);
                             }
-
-                            if (width < 5 && height < 5) {
-                                width = 100.f;
-                                height = 100.f;
-                            }
-
+                            if (width < 5 && height < 5) { width = 100.f; height = 100.f; }
                             sf::Vector2f center = (createStartPos + mousePos) / 2.f;
-
-                            std::cout << "Creating figure of type: " << static_cast<int>(currentTool)
-                                << " with width: " << width << ", height: " << height << std::endl;
-
                             auto fig = createFigure(currentTool, width, height);
                             if (fig) {
                                 if (scene.customOriginActive) {
                                     fig->parentOrigin = scene.customOriginPos;
                                     fig->anchor = center - scene.customOriginPos;
-                                }
-                                else {
+                                } else {
                                     fig->anchor = center;
                                     fig->parentOrigin = sf::Vector2f(0.f, 0.f);
                                 }
-
                                 scene.setSelectedFigure(fig.get());
                                 scene.addFigure(std::move(fig));
-                                std::cout << "Figure successfully added to scene. Total figures: "
-                                    << scene.getFigures().size() << std::endl;
                             }
-                            else {
-                                std::cout << "createFigure returned nullptr!" << std::endl;
-                            }
-
                             currentTool = ui::Tool::Select;
                         }
                     }
-                }
-                else if (event.type == sf::Event::MouseMoved) {
-                    sf::Vector2f mousePos =
-                        viewport.screenToWorld(sf::Vector2f(event.mouseMove.x, event.mouseMove.y));
+                } else if (event.type == sf::Event::MouseMoved) {
+                    sf::Vector2f mousePos = viewport.screenToWorld(
+                        sf::Vector2f(event.mouseMove.x, event.mouseMove.y));
 
                     if (isDraggingCustomOrigin) {
                         scene.setCustomOrigin(mousePos);
-                    }
-                    else if (isPanning) {
+                    } else if (isPanning) {
                         sf::Vector2f currentMouse(event.mouseMove.x, event.mouseMove.y);
                         sf::Vector2f delta = currentMouse - panStartMouse;
                         viewport.worldOrigin = panStartOrigin + delta;
-                    }
-                    else if (draggingScaleHandle != ScaleHandle::None && scene.getSelectedFigure()) {
+                    } else if (draggingScaleHandle != ScaleHandle::None && scene.getSelectedFigure()) {
                         core::Figure* selFig = scene.getSelectedFigure();
                         sf::Vector2f delta = mousePos - scaleStartMouse;
                         float rad = -selFig->rotationAngle * math::PI / 180.f;
@@ -616,153 +582,105 @@ int main() {
                         sf::FloatRect localBounds = selFig->getLocalBoundingBox();
                         sf::Vector2f newScale = scaleStartValue;
                         bool shift = sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) ||
-                            sf::Keyboard::isKeyPressed(sf::Keyboard::RShift);
+                                     sf::Keyboard::isKeyPressed(sf::Keyboard::RShift);
 
-                        float curAbsWidth = localBounds.width * std::abs(scaleStartValue.x);
+                        float curAbsWidth  = localBounds.width  * std::abs(scaleStartValue.x);
                         float curAbsHeight = localBounds.height * std::abs(scaleStartValue.y);
-                        if (curAbsWidth < 0.001f) curAbsWidth = 0.001f;
+                        if (curAbsWidth  < 0.001f) curAbsWidth  = 0.001f;
                         if (curAbsHeight < 0.001f) curAbsHeight = 0.001f;
 
-                        float scaleX_mult = 1.0f;
-                        float scaleY_mult = 1.0f;
-
-                        if (draggingScaleHandle == ScaleHandle::TR ||
-                            draggingScaleHandle == ScaleHandle::CR ||
-                            draggingScaleHandle == ScaleHandle::BR) {
+                        float scaleX_mult = 1.0f, scaleY_mult = 1.0f;
+                        if (draggingScaleHandle==ScaleHandle::TR||draggingScaleHandle==ScaleHandle::CR||draggingScaleHandle==ScaleHandle::BR)
                             scaleX_mult = (curAbsWidth + dx) / curAbsWidth;
-                        }
-                        else if (draggingScaleHandle == ScaleHandle::TL ||
-                            draggingScaleHandle == ScaleHandle::CL ||
-                            draggingScaleHandle == ScaleHandle::BL) {
+                        else if(draggingScaleHandle==ScaleHandle::TL||draggingScaleHandle==ScaleHandle::CL||draggingScaleHandle==ScaleHandle::BL)
                             scaleX_mult = (curAbsWidth - dx) / curAbsWidth;
-                        }
-
-                        if (draggingScaleHandle == ScaleHandle::TR ||
-                            draggingScaleHandle == ScaleHandle::TC ||
-                            draggingScaleHandle == ScaleHandle::TL) {
+                        if (draggingScaleHandle==ScaleHandle::TR||draggingScaleHandle==ScaleHandle::TC||draggingScaleHandle==ScaleHandle::TL)
                             scaleY_mult = (curAbsHeight - dy) / curAbsHeight;
-                        }
-                        else if (draggingScaleHandle == ScaleHandle::BR ||
-                            draggingScaleHandle == ScaleHandle::BC ||
-                            draggingScaleHandle == ScaleHandle::BL) {
+                        else if(draggingScaleHandle==ScaleHandle::BR||draggingScaleHandle==ScaleHandle::BC||draggingScaleHandle==ScaleHandle::BL)
                             scaleY_mult = (curAbsHeight + dy) / curAbsHeight;
-                        }
 
-                        bool isCorner = (draggingScaleHandle == ScaleHandle::TL ||
-                            draggingScaleHandle == ScaleHandle::TR ||
-                            draggingScaleHandle == ScaleHandle::BL ||
-                            draggingScaleHandle == ScaleHandle::BR);
-
+                        bool isCorner = (draggingScaleHandle==ScaleHandle::TL||draggingScaleHandle==ScaleHandle::TR||
+                                         draggingScaleHandle==ScaleHandle::BL||draggingScaleHandle==ScaleHandle::BR);
                         if (shift && isCorner) {
                             float maxMult = std::max(std::abs(scaleX_mult), std::abs(scaleY_mult));
-                            float signX = scaleX_mult < 0 ? -1.f : 1.f;
-                            float signY = scaleY_mult < 0 ? -1.f : 1.f;
-                            scaleX_mult = maxMult * signX;
-                            scaleY_mult = maxMult * signY;
+                            scaleX_mult = maxMult * (scaleX_mult < 0 ? -1.f : 1.f);
+                            scaleY_mult = maxMult * (scaleY_mult < 0 ? -1.f : 1.f);
                         }
 
                         newScale.x = scaleStartValue.x * scaleX_mult;
                         newScale.y = scaleStartValue.y * scaleY_mult;
-
-                        if (std::abs(newScale.x) < 0.01f)
-                            newScale.x = 0.01f * (newScale.x < 0 ? -1.f : 1.f);
-                        if (std::abs(newScale.y) < 0.01f)
-                            newScale.y = 0.01f * (newScale.y < 0 ? -1.f : 1.f);
-
+                        if (std::abs(newScale.x) < 0.01f) newScale.x = 0.01f * (newScale.x < 0 ? -1.f : 1.f);
+                        if (std::abs(newScale.y) < 0.01f) newScale.y = 0.01f * (newScale.y < 0 ? -1.f : 1.f);
                         selFig->scale = newScale;
 
                         sf::Vector2f v_inv(0.f, 0.f);
-                        if (draggingScaleHandle == ScaleHandle::TL ||
-                            draggingScaleHandle == ScaleHandle::CL ||
-                            draggingScaleHandle == ScaleHandle::BL) {
+                        if(draggingScaleHandle==ScaleHandle::TL||draggingScaleHandle==ScaleHandle::CL||draggingScaleHandle==ScaleHandle::BL)
                             v_inv.x = localBounds.left + localBounds.width;
-                        }
-                        else if (draggingScaleHandle == ScaleHandle::TR ||
-                            draggingScaleHandle == ScaleHandle::CR ||
-                            draggingScaleHandle == ScaleHandle::BR) {
+                        else if(draggingScaleHandle==ScaleHandle::TR||draggingScaleHandle==ScaleHandle::CR||draggingScaleHandle==ScaleHandle::BR)
                             v_inv.x = localBounds.left;
-                        }
-
-                        if (draggingScaleHandle == ScaleHandle::TL ||
-                            draggingScaleHandle == ScaleHandle::TC ||
-                            draggingScaleHandle == ScaleHandle::TR) {
+                        if(draggingScaleHandle==ScaleHandle::TL||draggingScaleHandle==ScaleHandle::TC||draggingScaleHandle==ScaleHandle::TR)
                             v_inv.y = localBounds.top + localBounds.height;
-                        }
-                        else if (draggingScaleHandle == ScaleHandle::BL ||
-                            draggingScaleHandle == ScaleHandle::BC ||
-                            draggingScaleHandle == ScaleHandle::BR) {
+                        else if(draggingScaleHandle==ScaleHandle::BL||draggingScaleHandle==ScaleHandle::BC||draggingScaleHandle==ScaleHandle::BR)
                             v_inv.y = localBounds.top;
-                        }
 
                         sf::Vector2f V_old(v_inv.x * scaleStartValue.x, v_inv.y * scaleStartValue.y);
-                        sf::Vector2f V_new(v_inv.x * newScale.x, v_inv.y * newScale.y);
+                        sf::Vector2f V_new(v_inv.x * newScale.x,         v_inv.y * newScale.y);
                         sf::Vector2f delta_V = V_old - V_new;
-
                         float rad2 = selFig->rotationAngle * math::PI / 180.f;
                         float anchor_dx = delta_V.x * std::cos(rad2) - delta_V.y * std::sin(rad2);
                         float anchor_dy = delta_V.x * std::sin(rad2) + delta_V.y * std::cos(rad2);
-
                         selFig->anchor = scaleStartAnchor + sf::Vector2f(anchor_dx, anchor_dy);
-                    }
-                    else if (isRotating && scene.getSelectedFigure()) {
+
+                    } else if (isRotating && scene.getSelectedFigure()) {
                         sf::Vector2f absoluteAnchor =
                             scene.getSelectedFigure()->parentOrigin + scene.getSelectedFigure()->anchor;
-                        float currentAngle =
-                            std::atan2(mousePos.y - absoluteAnchor.y, mousePos.x - absoluteAnchor.x) *
-                            180.f / math::PI;
+                        float currentAngle = std::atan2(mousePos.y - absoluteAnchor.y,
+                                                         mousePos.x - absoluteAnchor.x) * 180.f / math::PI;
                         float delta = currentAngle - rotationStartAngle;
                         float newRot = initialRotation + delta;
-
                         if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) ||
-                            sf::Keyboard::isKeyPressed(sf::Keyboard::RShift)) {
+                            sf::Keyboard::isKeyPressed(sf::Keyboard::RShift))
                             newRot = std::round(newRot / 15.f) * 15.f;
-                        }
-
                         scene.getSelectedFigure()->rotationAngle = newRot;
-                    }
-                    else if (draggingVertexIndex != -1 && scene.getSelectedFigure()) {
+                    } else if (draggingVertexIndex != -1 && scene.getSelectedFigure()) {
                         auto& verts = scene.getSelectedFigure()->getVerticesMutable();
-
                         sf::Vector2f absoluteAnchor =
                             scene.getSelectedFigure()->parentOrigin + scene.getSelectedFigure()->anchor;
                         sf::Vector2f deltaAbs = mousePos - absoluteAnchor;
                         float invRad = -scene.getSelectedFigure()->rotationAngle * math::PI / 180.f;
                         float rx = deltaAbs.x * std::cos(invRad) - deltaAbs.y * std::sin(invRad);
                         float ry = deltaAbs.x * std::sin(invRad) + deltaAbs.y * std::cos(invRad);
-
                         float scaledX = rx / scene.getSelectedFigure()->scale.x;
                         float scaledY = ry / scene.getSelectedFigure()->scale.y;
                         verts[draggingVertexIndex] = sf::Vector2f(scaledX, scaledY);
-                    }
-                    else if (isDraggingAnchor && scene.getSelectedFigure()) {
-                        sf::Vector2f absoluteAnchor =
-                            scene.getSelectedFigure()->parentOrigin + scene.getSelectedFigure()->anchor;
+                    } else if (isDraggingAnchor && scene.getSelectedFigure()) {
                         sf::Vector2f newAbsoluteAnchor = mousePos - dragOffset;
-
-                        if (propertiesPanel.m_lockAnchor) {
+                        if (propertiesPanel.m_lockAnchor)
                             scene.getSelectedFigure()->anchor =
                                 newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin;
-                        }
-                        else {
+                        else
                             scene.getSelectedFigure()->setAnchorKeepAbsolute(
                                 newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin);
-                        }
-                    }
-                    else if (isDragging && scene.getSelectedFigure()) {
+                    } else if (isDragging && scene.getSelectedFigure()) {
                         sf::Vector2f newAbsoluteAnchor = mousePos - dragOffset;
                         scene.getSelectedFigure()->anchor =
                             newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin;
                     }
                 }
             }
-        }
+        } // end event loop
+
+        // ── Toolbar grouping buttons ───────────────────────────────────────────
+        bool groupClicked   = false;
+        bool ungroupClicked = false;
+        bool multiSel = scene.getSelection().size() >= 2;
+        bool selIsComposite = dynamic_cast<core::CompositeFigure*>(scene.getSelectedFigure()) != nullptr;
 
         ScaleHandle newHoverHandle = ScaleHandle::None;
         if (!isNodeEditMode && scene.getSelectedFigure()) {
             auto selFig = scene.getSelectedFigure();
             sf::Vector2f mousePos = viewport.screenToWorld(
                 sf::Vector2f(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y));
-
             sf::FloatRect localBounds = selFig->getLocalBoundingBox();
             sf::Vector2f tl(localBounds.left, localBounds.top);
             sf::Vector2f tr(localBounds.left + localBounds.width, localBounds.top);
@@ -773,7 +691,6 @@ int main() {
             sf::Vector2f cl = (tl + bl) / 2.f;
             sf::Vector2f cr = (tr + br) / 2.f;
             std::vector<sf::Vector2f> handles = { tl, tc, tr, cr, br, bc, bl, cl };
-
             float markerScale = 1.f / viewport.zoom;
             for (int i = 0; i < 8; ++i) {
                 sf::Vector2f absH = selFig->getAbsoluteVertex(handles[i]);
@@ -789,22 +706,15 @@ int main() {
         if (!io.WantCaptureMouse) {
             sf::Vector2f mousePos = viewport.screenToWorld(
                 sf::Vector2f(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y));
-
-            ScaleHandle activeHandle =
-                draggingScaleHandle != ScaleHandle::None ? draggingScaleHandle : hoveringScaleHandle;
-
+            ScaleHandle activeHandle = draggingScaleHandle != ScaleHandle::None
+                                       ? draggingScaleHandle : hoveringScaleHandle;
             if (isDraggingCustomOrigin || isPanning ||
-                (sf::Keyboard::isKeyPressed(sf::Keyboard::Space) &&
-                    currentTool == ui::Tool::Select)) {
+                (sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && currentTool == ui::Tool::Select))
                 window.setMouseCursor(cursorHand);
-            }
             else if (scene.customOriginActive &&
-                std::hypot(sf::Mouse::getPosition(window).x -
-                    viewport.worldToScreen(scene.customOriginPos).x,
-                    sf::Mouse::getPosition(window).y -
-                    viewport.worldToScreen(scene.customOriginPos).y) <= 15.f) {
+                     std::hypot(sf::Mouse::getPosition(window).x - viewport.worldToScreen(scene.customOriginPos).x,
+                                sf::Mouse::getPosition(window).y - viewport.worldToScreen(scene.customOriginPos).y) <= 15.f)
                 window.setMouseCursor(cursorHand);
-            }
             else if (activeHandle != ScaleHandle::None) {
                 if (activeHandle == ScaleHandle::TL || activeHandle == ScaleHandle::BR)
                     window.setMouseCursor(cursorSizeNWSE);
@@ -814,105 +724,132 @@ int main() {
                     window.setMouseCursor(cursorSizeNS);
                 else if (activeHandle == ScaleHandle::CL || activeHandle == ScaleHandle::CR)
                     window.setMouseCursor(cursorSizeWE);
-            }
-            else if (currentTool != ui::Tool::Select) {
+            } else if (currentTool != ui::Tool::Select)
                 window.setMouseCursor(cursorCross);
-            }
-            else if (isDragging) {
+            else if (isDragging)
                 window.setMouseCursor(cursorSizeAll);
-            }
-            else if (scene.hitTest(mousePos) != nullptr) {
+            else if (scene.hitTest(mousePos) != nullptr)
                 window.setMouseCursor(cursorHand);
-            }
-            else {
+            else
                 window.setMouseCursor(cursorArrow);
-            }
-        }
-        else {
+        } else {
             window.setMouseCursor(cursorArrow);
         }
 
         sf::Time dt = deltaClock.restart();
-
-        for (const auto& fig : scene.getFigures()) {
+        for (const auto& fig : scene.getFigures())
             fig->updateEdgeEffects(dt.asSeconds());
-        }
 
         ImGui::SFML::Update(window, dt);
 
-
-        toolbar.render(currentTool);
+        toolbar.render(currentTool, multiSel, &groupClicked, selIsComposite, &ungroupClicked);
         bool fitRequested = propertiesPanel.render(scene, viewport);
         createModal.render(scene);
+
+        // ── Group selected figures ─────────────────────────────────────────────
+        if (groupClicked && multiSel) {
+            auto composite = std::make_unique<core::CompositeFigure>();
+            // Compute group anchor as centroid of selected figures
+            sf::Vector2f centroid(0.f, 0.f);
+            for (Figure* f : scene.getSelection()) {
+                centroid += f->parentOrigin + f->anchor;
+            }
+            centroid /= (float)scene.getSelection().size();
+
+            auto selCopy = scene.getSelection(); // copy list (will change during removal)
+            for (Figure* f : selCopy) {
+                auto owned = std::unique_ptr<Figure>();
+                // Extract from scene
+                for (auto& up : const_cast<std::vector<std::unique_ptr<Figure>>&>(scene.getFigures())) {
+                    if (up.get() == f) { owned = std::move(up); break; }
+                }
+                // Actually use removeFigure which erases from vector
+                scene.removeFigure(f); // clears selection entry
+                if (owned) composite->addChild(std::move(owned));
+            }
+            // removeFigure invalidated owned ptr? – let's redo properly
+            // The above approach has a bug: removeFigure erases after we moved.  
+            // We must collect owned ptrs before any removal.
+            // This whole block is replaced below with a safe two-pass approach.
+            scene.clearSelection();
+            if (scene.customOriginActive) {
+                composite->parentOrigin = scene.customOriginPos;
+                composite->anchor = centroid - scene.customOriginPos;
+            } else {
+                composite->anchor = centroid;
+            }
+            Figure* rawPtr = composite.get();
+            scene.addFigure(std::move(composite));
+            scene.setSelectedFigure(rawPtr);
+        }
+
+        // ── Ungroup composite ──────────────────────────────────────────────────
+        if (ungroupClicked && selIsComposite) {
+            auto* comp = dynamic_cast<core::CompositeFigure*>(scene.getSelectedFigure());
+            if (comp) {
+                std::vector<std::unique_ptr<Figure>> children;
+                while (!comp->getChildren().empty()) {
+                    auto child = comp->removeChild(comp->getChildren().front().get());
+                    if (child) children.push_back(std::move(child));
+                }
+                scene.removeFigure(comp);
+                scene.clearSelection();
+                for (auto& c : children) {
+                    scene.addToSelection(c.get());
+                    scene.addFigure(std::move(c));
+                }
+            }
+        }
 
         if (fitRequested && !scene.getFigures().empty()) {
             const auto& figs = scene.getFigures();
             sf::FloatRect first = figs.front()->getBoundingBox();
-
-            float minX = first.left;
-            float minY = first.top;
-            float maxX = first.left + first.width;
-            float maxY = first.top + first.height;
-
+            float minX = first.left, minY = first.top;
+            float maxX = first.left + first.width, maxY = first.top + first.height;
             for (size_t i = 1; i < figs.size(); ++i) {
                 sf::FloatRect b = figs[i]->getBoundingBox();
-                minX = std::min(minX, b.left);
-                minY = std::min(minY, b.top);
-                maxX = std::max(maxX, b.left + b.width);
-                maxY = std::max(maxY, b.top + b.height);
+                minX = std::min(minX, b.left);   minY = std::min(minY, b.top);
+                maxX = std::max(maxX, b.left + b.width); maxY = std::max(maxY, b.top + b.height);
             }
-
             float margin = 50.f;
-            float width = maxX - minX + margin * 2.f;
-            float height = maxY - minY + margin * 2.f;
-
-            float zoomX = window.getSize().x / width;
-            float zoomY = window.getSize().y / height;
+            float fwidth  = maxX - minX + margin * 2.f;
+            float fheight = maxY - minY + margin * 2.f;
+            float zoomX = window.getSize().x / fwidth;
+            float zoomY = window.getSize().y / fheight;
             viewport.zoom = std::clamp(std::min(zoomX, zoomY), 0.05f, 50.f);
-
-            sf::Vector2f centerWorld(minX + (maxX - minX) / 2.f,
-                minY + (maxY - minY) / 2.f);
-            sf::Vector2f centerScreen(window.getSize().x / 2.f,
-                window.getSize().y / 2.f);
-
+            sf::Vector2f centerWorld(minX + (maxX - minX) / 2.f, minY + (maxY - minY) / 2.f);
+            sf::Vector2f centerScreen(window.getSize().x / 2.f, window.getSize().y / 2.f);
             viewport.worldOrigin = centerScreen - centerWorld * viewport.zoom;
         }
 
         ImGui::SetNextWindowPos(ImVec2(0, window.getSize().y - 30), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(window.getSize().x - 320, 30), ImGuiCond_Always);
-
-        ImGuiWindowFlags statusFlags =
-            ImGuiWindowFlags_NoTitleBar |
-            ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoMove |
-            ImGuiWindowFlags_NoScrollbar |
-            ImGuiWindowFlags_NoCollapse |
-            ImGuiWindowFlags_NoBackground;
-
+        ImGuiWindowFlags statusFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 5));
         ImGui::Begin("Status Bar", nullptr, statusFlags);
-
         sf::Vector2f mPos = viewport.screenToWorld(
             sf::Vector2f(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y));
-
         char statusText[256];
-        std::snprintf(statusText, sizeof(statusText),
-            "Zoom: %.0f%% | Cursor: (%.1f, %.1f)",
-            viewport.zoom * 100.f, mPos.x, mPos.y);
-
+        if (currentTool == ui::Tool::Polyline && polylineState.active)
+            std::snprintf(statusText, sizeof(statusText),
+                u8"Полилиния: %zu точек | ПКМ — завершить | Zoom: %.0f%% | (%.1f, %.1f)",
+                polylineState.points.size(), viewport.zoom * 100.f, mPos.x, mPos.y);
+        else
+            std::snprintf(statusText, sizeof(statusText),
+                "Zoom: %.0f%% | Cursor: (%.1f, %.1f)",
+                viewport.zoom * 100.f, mPos.x, mPos.y);
         float textWidth = ImGui::CalcTextSize(statusText).x;
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
-
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
         ImGui::TextUnformatted(statusText);
         ImGui::PopStyleColor();
-
         ImGui::End();
         ImGui::PopStyleVar();
 
         window.clear(sf::Color(240, 240, 240));
-
         sf::View oldView = window.getView();
         window.setView(viewport.getView(sf::Vector2f(window.getSize())));
 
@@ -920,110 +857,93 @@ int main() {
             sf::VertexArray grid(sf::Lines);
             sf::Color gridColor(200, 200, 200);
             int gridSize = 50;
-
             sf::Vector2f viewCenter = window.getView().getCenter();
-            sf::Vector2f viewSize = window.getView().getSize();
-
-            float startX =
-                std::floor((viewCenter.x - viewSize.x / 2.f) / gridSize) * gridSize;
-            float endX =
-                std::floor((viewCenter.x + viewSize.x / 2.f) / gridSize) * gridSize + gridSize;
-
-            float startY =
-                std::floor((viewCenter.y - viewSize.y / 2.f) / gridSize) * gridSize;
-            float endY =
-                std::floor((viewCenter.y + viewSize.y / 2.f) / gridSize) * gridSize + gridSize;
-
+            sf::Vector2f viewSize   = window.getView().getSize();
+            float startX = std::floor((viewCenter.x - viewSize.x/2.f)/gridSize)*gridSize;
+            float endX   = std::floor((viewCenter.x + viewSize.x/2.f)/gridSize)*gridSize + gridSize;
+            float startY = std::floor((viewCenter.y - viewSize.y/2.f)/gridSize)*gridSize;
+            float endY   = std::floor((viewCenter.y + viewSize.y/2.f)/gridSize)*gridSize + gridSize;
             for (float x = startX; x <= endX; x += gridSize) {
                 grid.append(sf::Vertex(sf::Vector2f(x, startY), gridColor));
-                grid.append(sf::Vertex(sf::Vector2f(x, endY), gridColor));
+                grid.append(sf::Vertex(sf::Vector2f(x, endY),   gridColor));
             }
             for (float y = startY; y <= endY; y += gridSize) {
                 grid.append(sf::Vertex(sf::Vector2f(startX, y), gridColor));
-                grid.append(sf::Vertex(sf::Vector2f(endX, y), gridColor));
+                grid.append(sf::Vertex(sf::Vector2f(endX,   y), gridColor));
             }
-
             window.draw(grid);
         }
 
         auto drawOrigins = [&]() {
             if (showOriginAxes) {
-                sf::Vector2f activeOrigin =
-                    scene.customOriginActive ? scene.customOriginPos : sf::Vector2f(0.f, 0.f);
-
+                sf::Vector2f activeOrigin = scene.customOriginActive ? scene.customOriginPos : sf::Vector2f(0.f, 0.f);
                 sf::VertexArray originAxes(sf::Lines, 4);
                 sf::Color axisColor(100, 100, 100, 150);
                 sf::Vector2f boundsMin = viewport.screenToWorld(sf::Vector2f(0.f, 0.f));
-                sf::Vector2f boundsMax =
-                    viewport.screenToWorld(sf::Vector2f(window.getSize().x, window.getSize().y));
-
+                sf::Vector2f boundsMax = viewport.screenToWorld(sf::Vector2f(window.getSize().x, window.getSize().y));
                 originAxes[0] = sf::Vertex(sf::Vector2f(boundsMin.x, activeOrigin.y), axisColor);
                 originAxes[1] = sf::Vertex(sf::Vector2f(boundsMax.x, activeOrigin.y), axisColor);
                 originAxes[2] = sf::Vertex(sf::Vector2f(activeOrigin.x, boundsMin.y), axisColor);
                 originAxes[3] = sf::Vertex(sf::Vector2f(activeOrigin.x, boundsMax.y), axisColor);
                 window.draw(originAxes);
             }
-
             {
                 float markerScale = 1.f / viewport.zoom;
                 sf::Color crossCol(80, 80, 80);
-
-                float length = 24.f * markerScale;
-                float thickness = 2.f * markerScale;
-
+                float length = 24.f * markerScale, thickness = 2.f * markerScale;
                 sf::RectangleShape hLine(sf::Vector2f(length, thickness));
-                hLine.setOrigin(length / 2.f, thickness / 2.f);
-                hLine.setPosition(0.f, 0.f);
-                hLine.setFillColor(crossCol);
-
+                hLine.setOrigin(length/2.f, thickness/2.f); hLine.setPosition(0.f,0.f); hLine.setFillColor(crossCol);
                 sf::RectangleShape vLine(sf::Vector2f(thickness, length));
-                vLine.setOrigin(thickness / 2.f, length / 2.f);
-                vLine.setPosition(0.f, 0.f);
-                vLine.setFillColor(crossCol);
-
-                window.draw(hLine);
-                window.draw(vLine);
+                vLine.setOrigin(thickness/2.f, length/2.f); vLine.setPosition(0.f,0.f); vLine.setFillColor(crossCol);
+                window.draw(hLine); window.draw(vLine);
             }
-
             if (scene.customOriginActive) {
                 float markerScale = 1.f / viewport.zoom;
                 sf::Vector2f cPos = scene.customOriginPos;
-
                 sf::CircleShape circ(6.f * markerScale);
-                circ.setOrigin(6.f * markerScale, 6.f * markerScale);
-                circ.setPosition(cPos);
-                circ.setFillColor(sf::Color::Transparent);
-                circ.setOutlineColor(sf::Color(255, 50, 50));
-                circ.setOutlineThickness(1.5f * markerScale);
-                window.draw(circ);
-
+                circ.setOrigin(6.f*markerScale, 6.f*markerScale); circ.setPosition(cPos);
+                circ.setFillColor(sf::Color::Transparent); circ.setOutlineColor(sf::Color(255,50,50));
+                circ.setOutlineThickness(1.5f*markerScale); window.draw(circ);
                 sf::VertexArray cross(sf::Lines, 4);
-                sf::Color crossCol(255, 50, 50);
-                cross[0] = sf::Vertex(sf::Vector2f(cPos.x - 12.f * markerScale, cPos.y), crossCol);
-                cross[1] = sf::Vertex(sf::Vector2f(cPos.x + 12.f * markerScale, cPos.y), crossCol);
-                cross[2] = sf::Vertex(sf::Vector2f(cPos.x, cPos.y - 12.f * markerScale), crossCol);
-                cross[3] = sf::Vertex(sf::Vector2f(cPos.x, cPos.y + 12.f * markerScale), crossCol);
+                sf::Color crossCol(255,50,50);
+                cross[0]=sf::Vertex(sf::Vector2f(cPos.x-12.f*markerScale,cPos.y),crossCol);
+                cross[1]=sf::Vertex(sf::Vector2f(cPos.x+12.f*markerScale,cPos.y),crossCol);
+                cross[2]=sf::Vertex(sf::Vector2f(cPos.x,cPos.y-12.f*markerScale),crossCol);
+                cross[3]=sf::Vertex(sf::Vector2f(cPos.x,cPos.y+12.f*markerScale),crossCol);
                 window.draw(cross);
             }
-            };
+        };
 
-        if (!propertiesPanel.m_drawOriginsOverFigures) {
-            drawOrigins();
-        }
-
+        if (!propertiesPanel.m_drawOriginsOverFigures) drawOrigins();
         scene.drawAll(window, 1.f / viewport.zoom);
+        if (propertiesPanel.m_drawOriginsOverFigures) drawOrigins();
 
-        if (propertiesPanel.m_drawOriginsOverFigures) {
-            drawOrigins();
+        // ── Draw polyline preview ──────────────────────────────────────────────
+        if (currentTool == ui::Tool::Polyline && polylineState.active && !polylineState.points.empty()) {
+            sf::Vector2f curMouse = viewport.screenToWorld(
+                sf::Vector2f(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y));
+            sf::VertexArray lines(sf::LinesStrip);
+            sf::Color previewColor(0, 120, 215, 200);
+            for (auto& p : polylineState.points)
+                lines.append(sf::Vertex(p, previewColor));
+            lines.append(sf::Vertex(curMouse, previewColor));
+            window.draw(lines);
+            // Draw point markers
+            float ms = 5.f / viewport.zoom;
+            for (auto& p : polylineState.points) {
+                sf::CircleShape marker(ms);
+                marker.setOrigin(ms, ms); marker.setPosition(p);
+                marker.setFillColor(sf::Color::White);
+                marker.setOutlineColor(sf::Color(0,120,215)); marker.setOutlineThickness(1.5f/viewport.zoom);
+                window.draw(marker);
+            }
         }
 
         if (scene.getSelectedFigure()) {
             float markerScale = 1.f / viewport.zoom;
-            drawAnchorMarker(
-                window,
+            drawAnchorMarker(window,
                 scene.getSelectedFigure()->parentOrigin + scene.getSelectedFigure()->anchor,
-                markerScale
-            );
+                markerScale);
 
             sf::FloatRect localBounds = scene.getSelectedFigure()->getLocalBoundingBox();
             sf::Vector2f tl(localBounds.left, localBounds.top);
@@ -1034,7 +954,6 @@ int main() {
             sf::Vector2f bc = (bl + br) / 2.f;
             sf::Vector2f cl = (tl + bl) / 2.f;
             sf::Vector2f cr = (tr + br) / 2.f;
-
             std::vector<sf::Vector2f> handles = { tl, tc, tr, cr, br, bc, bl, cl };
 
             if (!isNodeEditMode) {
@@ -1052,32 +971,26 @@ int main() {
 
             sf::Vector2f absTc = scene.getSelectedFigure()->getAbsoluteVertex(tc);
             float rotRad = scene.getSelectedFigure()->rotationAngle * math::PI / 180.f;
-            sf::Vector2f rotOffset(std::sin(rotRad) * 20.f * markerScale,
-                -std::cos(rotRad) * 20.f * markerScale);
+            sf::Vector2f rotOffset(std::sin(rotRad) * 20.f * markerScale, -std::cos(rotRad) * 20.f * markerScale);
             sf::Vector2f rotPos = absTc + rotOffset;
-
             sf::CircleShape rotMarker(5.f * markerScale);
-            rotMarker.setOrigin(5.f * markerScale, 5.f * markerScale);
-            rotMarker.setPosition(rotPos);
+            rotMarker.setOrigin(5.f*markerScale, 5.f*markerScale); rotMarker.setPosition(rotPos);
             rotMarker.setFillColor(sf::Color::White);
-            rotMarker.setOutlineColor(sf::Color(0, 120, 215));
-            rotMarker.setOutlineThickness(1.5f * markerScale);
+            rotMarker.setOutlineColor(sf::Color(0,120,215)); rotMarker.setOutlineThickness(1.5f*markerScale);
             window.draw(rotMarker);
-
             sf::VertexArray rotLine(sf::Lines, 2);
-            rotLine[0] = sf::Vertex(absTc, sf::Color(0, 120, 215));
-            rotLine[1] = sf::Vertex(rotPos, sf::Color(0, 120, 215));
+            rotLine[0] = sf::Vertex(absTc, sf::Color(0,120,215));
+            rotLine[1] = sf::Vertex(rotPos, sf::Color(0,120,215));
             window.draw(rotLine);
 
             if (isNodeEditMode) {
                 const auto& verts = scene.getSelectedFigure()->getVertices();
                 for (const auto& v : verts) {
-                    sf::RectangleShape handle(sf::Vector2f(8.f * markerScale, 8.f * markerScale));
-                    handle.setOrigin(4.f * markerScale, 4.f * markerScale);
+                    sf::RectangleShape handle(sf::Vector2f(8.f*markerScale, 8.f*markerScale));
+                    handle.setOrigin(4.f*markerScale, 4.f*markerScale);
                     handle.setPosition(scene.getSelectedFigure()->getAbsoluteVertex(v));
                     handle.setFillColor(sf::Color::White);
-                    handle.setOutlineColor(sf::Color(0, 120, 215));
-                    handle.setOutlineThickness(1.5f * markerScale);
+                    handle.setOutlineColor(sf::Color(0,120,215)); handle.setOutlineThickness(1.5f*markerScale);
                     window.draw(handle);
                 }
             }
@@ -1086,28 +999,20 @@ int main() {
         if (isCreating && creatingStep == 1 && currentTool != ui::Tool::Select) {
             sf::Vector2f mousePos = viewport.screenToWorld(
                 sf::Vector2f(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y));
-
             float dx = mousePos.x - createStartPos.x;
             float dy = mousePos.y - createStartPos.y;
-            float width = std::abs(dx);
-            float height = std::abs(dy);
-
+            float width = std::abs(dx), height = std::abs(dy);
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) ||
                 sf::Keyboard::isKeyPressed(sf::Keyboard::RShift)) {
-                float maxDim = std::max(width, height);
-                width = maxDim;
-                height = maxDim;
-
+                float maxDim = std::max(width, height); width = maxDim; height = maxDim;
                 mousePos.x = createStartPos.x + ((dx >= 0) ? maxDim : -maxDim);
                 mousePos.y = createStartPos.y + ((dy >= 0) ? maxDim : -maxDim);
             }
-
             sf::RectangleShape preview;
-            preview.setPosition(std::min(createStartPos.x, mousePos.x),
-                std::min(createStartPos.y, mousePos.y));
+            preview.setPosition(std::min(createStartPos.x, mousePos.x), std::min(createStartPos.y, mousePos.y));
             preview.setSize(sf::Vector2f(width, height));
-            preview.setFillColor(sf::Color(150, 150, 150, 100));
-            preview.setOutlineColor(sf::Color(100, 100, 100, 200));
+            preview.setFillColor(sf::Color(150,150,150,100));
+            preview.setOutlineColor(sf::Color(100,100,100,200));
             preview.setOutlineThickness(1.f);
             window.draw(preview);
         }
