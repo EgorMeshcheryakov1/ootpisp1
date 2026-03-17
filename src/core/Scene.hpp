@@ -3,6 +3,7 @@
 #include "Figure.hpp"
 #include <memory>
 #include <vector>
+#include <algorithm>
 
 namespace core {
 
@@ -23,9 +24,16 @@ public:
     return m_figures;
   }
 
-  // Selected figure
-  void setSelectedFigure(Figure *fig) { m_selectedFigure = fig; }
+  // ── Single selection ─────────────────────────────────────────────────────
+  void setSelectedFigure(Figure *fig);
   Figure *getSelectedFigure() const { return m_selectedFigure; }
+
+  // ── Multi-selection ──────────────────────────────────────────────────────
+  void addToSelection(Figure *fig);
+  void removeFromSelection(Figure *fig);
+  void clearSelection();
+  bool isSelected(Figure *fig) const;
+  const std::vector<Figure*>& getSelection() const { return m_selection; }
 
   // World Origin properties
   bool customOriginActive = false;
@@ -37,6 +45,7 @@ public:
 private:
   std::vector<std::unique_ptr<Figure>> m_figures;
   Figure *m_selectedFigure = nullptr;
+  std::vector<Figure*> m_selection; // multi-selection list
 };
 
 } // namespace core
