@@ -20,49 +20,45 @@ void PolylineShape::rebuild() {
         return;
     }
 
-    m_vertices.resize(n + 1);
-
-    // Segment 0: absolute direction angle (degrees)
+    // Build n+1 points (start + one per segment)
+    std::vector<sf::Vector2f> pts(n + 1);
     float dirDeg = m_segments[0].angle;
-
-    sf::Vector2f cur(0.f, 0.f);
-    m_vertices[0] = cur;
+    pts[0] = sf::Vector2f(0.f, 0.f);
 
     for (size_t i = 0; i < n; ++i) {
         float rad = dirDeg * math::DEG_TO_RAD;
-        cur += sf::Vector2f(std::cos(rad), std::sin(rad)) * m_segments[i].length;
-        m_vertices[i + 1] = cur;
-
-        if (i + 1 < n) {
+        pts[i + 1] = pts[i] + sf::Vector2f(std::cos(rad), std::sin(rad)) * m_segments[i].length;
+        if (i + 1 < n)
             dirDeg += m_segments[i + 1].angle;
-        }
     }
 
-    // For closed shapes (polygon): last vertex == first vertex within tolerance.
-    // If so, drop the duplicate and treat as closed polygon with n vertices.
-    bool closed = false;
-    {
-        sf::Vector2f diff = m_vertices[n] - m_vertices[0];
-        if (std::hypot(diff.x, diff.y) < 1.f) {
-            m_vertices.resize(n);
-            closed = true;
-        }
+    // Detect closed shape: last point coincides with first (within 2px)
+    sf::Vector2f diff = pts[n] - pts[0];
+    m_closed = (std::hypot(diff.x, diff.y) < 2.f);
+
+    if (m_closed) {
+        // Closed polygon: store n vertices (drop duplicate last point)
+        m_vertices.assign(pts.begin(), pts.begin() + n);
+    } else {
+        // Open polyline: store all n+1 vertices
+        m_vertices = pts;
     }
 
     // Centre at centroid
-    size_t cnt = m_vertices.size();
     float cx = 0.f, cy = 0.f;
     for (auto& v : m_vertices) { cx += v.x; cy += v.y; }
-    cx /= (float)cnt; cy /= (float)cnt;
+    cx /= (float)m_vertices.size();
+    cy /= (float)m_vertices.size();
     for (auto& v : m_vertices) { v.x -= cx; v.y -= cy; }
 
     syncEdges();
 }
 
 void PolylineShape::syncEdges() {
+    // edges count = number of drawn segments = n for closed, n for open (n segments between n+1 pts)
     size_t n = m_segments.size();
     if (edges.size() != n) {
-        float oldW = edges.empty() ? 2.f : edges[0].width;
+        float oldW   = edges.empty() ? 2.f          : edges[0].width;
         sf::Color oldC = edges.empty() ? sf::Color::Black : edges[0].color;
         edges.resize(n);
         for (auto& e : edges) { e.width = oldW; e.color = oldC; }
@@ -70,9 +66,8 @@ void PolylineShape::syncEdges() {
 }
 
 void PolylineShape::setSideLengths(const std::vector<float>& lengths) {
-    for (size_t i = 0; i < m_segments.size() && i < lengths.size(); ++i) {
+    for (size_t i = 0; i < m_segments.size() && i < lengths.size(); ++i)
         m_segments[i].length = std::max(1.f, lengths[i]);
-    }
     rebuild();
 }
 
@@ -89,46 +84,110 @@ const char* PolylineShape::getSideName(int idx) const {
     return m_sideNames[(size_t)idx].c_str();
 }
 
-// ─── Named constructors ─────────────────────────────────────────────────────
+// Override draw: open polylines have no fill and do not close the last edge
+void PolylineShape::draw(sf::RenderTarget& target) const {
+    const auto& verts = getVertices();
+    if (verts.empty()) return;
+
+    const size_t n = m_segments.size(); // number of segments = number of edges to draw
+
+    if (m_closed) {
+        // Closed shape: use base class draw (fills + n edges closing back to v[0])
+        Figure::draw(target);
+        return;
+    }
+
+    // Open polyline: draw fill as convex hull approximation only if alpha > 0
+    if (fillColor.a > 0) {
+        sf::ConvexShape fill(verts.size());
+        for (size_t i = 0; i < verts.size(); ++i)
+            fill.setPoint(i, verts[i]);
+        fill.setPosition(parentOrigin + anchor);
+        fill.setRotation(rotationAngle);
+        fill.setScale(scale);
+        fill.setFillColor(fillColor);
+        target.draw(fill);
+    }
+
+    if (edges.empty()) return;
+
+    // Compute absolute vertices
+    std::vector<sf::Vector2f> V(verts.size());
+    for (size_t i = 0; i < verts.size(); ++i)
+        V[i] = getAbsoluteVertex(verts[i]);
+
+    // Draw exactly n segments: V[0]->V[1], V[1]->V[2], ..., V[n-1]->V[n]
+    // (For open polyline verts.size() == n+1)
+    for (size_t i = 0; i < n; ++i) {
+        size_t eIdx = i < edges.size() ? i : 0;
+
+        float drawWidth = edges[eIdx].width;
+        sf::Color drawColor = edges[eIdx].color;
+
+        if (edges[eIdx].flashEnabled && edges[eIdx].flashDuration > 0.f) {
+            float t = edges[eIdx].flashTime / edges[eIdx].flashDuration;
+            if (t < 0.f) t = 0.f; if (t > 1.f) t = 1.f;
+            float pulse = 0.5f + 0.5f * std::sin((1.f - t) * 18.f);
+            drawWidth += 2.0f + pulse * 3.0f;
+            auto mix = [&](sf::Uint8 a, sf::Uint8 b) -> sf::Uint8 {
+                float k = 0.55f + 0.45f * pulse;
+                return static_cast<sf::Uint8>(a + (b - a) * k);
+            };
+            drawColor.r = mix(drawColor.r, 255);
+            drawColor.g = mix(drawColor.g, 255);
+            drawColor.b = mix(drawColor.b, 0);
+        }
+
+        if (drawWidth <= 0.001f) continue;
+
+        sf::Vector2f delta = V[i + 1] - V[i];
+        float len = std::hypot(delta.x, delta.y);
+        if (len <= 0.0001f) continue;
+
+        sf::Vector2f dir    = delta / len;
+        sf::Vector2f normal = sf::Vector2f(-dir.y, dir.x);
+        float hw = drawWidth / 2.f;
+
+        sf::ConvexShape quad(4);
+        quad.setPoint(0, V[i]     - normal * hw);
+        quad.setPoint(1, V[i]     + normal * hw);
+        quad.setPoint(2, V[i + 1] + normal * hw);
+        quad.setPoint(3, V[i + 1] - normal * hw);
+        quad.setFillColor(drawColor);
+        target.draw(quad);
+    }
+}
+
+// ─── Named constructors ──────────────────────────────────────────────────────
 
 PolylineShape PolylineShape::makeTriangle(float sideA, float sideB, float sideC) {
     sideA = std::max(1.f, sideA);
     sideB = std::max(1.f, sideB);
     sideC = std::max(1.f, sideC);
 
-    // Clamp to valid triangle inequality
     sideA = std::min(sideA, sideB + sideC - 0.1f);
     sideB = std::min(sideB, sideA + sideC - 0.1f);
     sideC = std::min(sideC, sideA + sideB - 0.1f);
 
-    // Place sideA along 0 degrees (base).
-    // Compute angle at V0 (between sideC and sideA) using law of cosines:
-    // cos(V0) = (sideA^2 + sideC^2 - sideB^2) / (2*sideA*sideC)
-    // We go: V0 --(sideA)--> V1 --(sideB)--> V2 --(sideC)--> V0
-    // Segment[0]: dir=0, len=sideA
-    // At V1 we turn left (CCW) by exterior angle = 180 - angle_at_V1
-    // cos(V1) = (sideA^2 + sideB^2 - sideC^2) / (2*sideA*sideB)
+    // V0 --(sideA)--> V1 --(sideB)--> V2 --(sideC)--> V0
+    // Interior angles by law of cosines
     float cosV1 = (sideA*sideA + sideB*sideB - sideC*sideC) / (2.f*sideA*sideB);
     cosV1 = std::max(-1.f, std::min(1.f, cosV1));
-    float angleV1 = std::acos(cosV1) * math::RAD_TO_DEG; // interior angle at V1
+    float angleV1 = std::acos(cosV1) * math::RAD_TO_DEG;
 
-    // cos(V2) = (sideB^2 + sideC^2 - sideA^2) / (2*sideB*sideC)
     float cosV2 = (sideB*sideB + sideC*sideC - sideA*sideA) / (2.f*sideB*sideC);
     cosV2 = std::max(-1.f, std::min(1.f, cosV2));
     float angleV2 = std::acos(cosV2) * math::RAD_TO_DEG;
 
-    // Exterior turn (CCW = positive in screen coords where Y down means CW is positive).
-    // We want a CCW-wound triangle (standard mathematical orientation):
-    // turn at V1 = -(180 - angleV1)  (turn left = negative in Y-down coords)
+    // CW winding (Y-down screen): turn right at each vertex
     float turn1 = -(180.f - angleV1);
     float turn2 = -(180.f - angleV2);
 
     std::vector<Segment> segs = {
-        {sideA, 0.f},
+        {sideA,  0.f},
         {sideB, turn1},
         {sideC, turn2}
     };
-
     return PolylineShape(std::move(segs));
 }
 
@@ -137,43 +196,34 @@ PolylineShape PolylineShape::makeTrapezoid(float topW, float bottomW, float heig
     bottomW = std::max(1.f, bottomW);
     height  = std::max(1.f, height);
 
-    // Build vertices explicitly then convert to segments.
-    // Layout (Y down, screen coords):
-    //   BL=(0,0), BR=(bottomW,0), TR=(bottomW - (bottomW-topW)/2, -height), TL=((bottomW-topW)/2, -height)
+    // Explicit vertices (Y-down): BL -> BR -> TR -> TL -> BL (closed)
     float offset = (bottomW - topW) / 2.f;
-
-    sf::Vector2f BL(0.f,       0.f);
-    sf::Vector2f BR(bottomW,   0.f);
+    sf::Vector2f BL(0.f,              0.f);
+    sf::Vector2f BR(bottomW,          0.f);
     sf::Vector2f TR(bottomW - offset, -height);
-    sf::Vector2f TL(offset,          -height);
+    sf::Vector2f TL(offset,           -height);
 
-    // Segments: BL->BR, BR->TR, TR->TL, TL->BL
-    auto segFromPts = [](sf::Vector2f a, sf::Vector2f b) -> std::pair<float,float> {
+    auto seg = [](sf::Vector2f a, sf::Vector2f b) -> std::pair<float,float> {
         sf::Vector2f d = b - a;
-        float len = std::hypot(d.x, d.y);
-        float ang = std::atan2(d.y, d.x) * math::RAD_TO_DEG;
-        return {len, ang};
+        return { std::hypot(d.x, d.y), std::atan2(d.y, d.x) * math::RAD_TO_DEG };
     };
-
-    auto [len0, dir0] = segFromPts(BL, BR);
-    auto [len1, dir1] = segFromPts(BR, TR);
-    auto [len2, dir2] = segFromPts(TR, TL);
-    auto [len3, dir3] = segFromPts(TL, BL);
-
-    // Normalise turn angles to (-180, 180]
-    auto normAngle = [](float a) -> float {
+    auto norm = [](float a) -> float {
         while (a >  180.f) a -= 360.f;
         while (a <= -180.f) a += 360.f;
         return a;
     };
 
-    std::vector<Segment> segs = {
-        {len0, dir0},                      // seg0: absolute direction
-        {len1, normAngle(dir1 - dir0)},    // turn at BR
-        {len2, normAngle(dir2 - dir1)},    // turn at TR
-        {len3, normAngle(dir3 - dir2)},    // turn at TL
-    };
+    auto [l0, d0] = seg(BL, BR);
+    auto [l1, d1] = seg(BR, TR);
+    auto [l2, d2] = seg(TR, TL);
+    auto [l3, d3] = seg(TL, BL);
 
+    std::vector<Segment> segs = {
+        {l0, d0},            // seg0: absolute dir of bottom
+        {l1, norm(d1 - d0)}, // turn at BR
+        {l2, norm(d2 - d1)}, // turn at TR
+        {l3, norm(d3 - d2)}, // turn at TL
+    };
     return PolylineShape(std::move(segs));
 }
 
