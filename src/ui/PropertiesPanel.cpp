@@ -25,7 +25,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
 
     ImGui::Begin(u8"\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u0430", nullptr, flags);
 
-    // ── Viewport controls ────────────────────────────────────────────────────
+    // ── Viewport controls ─────────────────────────────────────────
     ImGui::TextUnformatted(u8"\u0421\u0434\u0432\u0438\u0433 \u0432\u0438\u0434\u0430");
     float origin[2] = { viewport.worldOrigin.x, viewport.worldOrigin.y };
     if (ImGui::DragFloat2("##ViewportPan", origin, 1.0f)) {
@@ -77,8 +77,6 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
             ImGui::SameLine();
             ImGui::Text("%zu", scene.getSelection().size());
 
-            // ── Add all selected to an existing composite ───────────────────
-            // Collect composites from the scene
             std::vector<core::CompositeFigure*> composites;
             for (const auto& fig : scene.getFigures()) {
                 auto* c = dynamic_cast<core::CompositeFigure*>(fig.get());
@@ -92,16 +90,18 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
                     char label[64];
                     std::snprintf(label, sizeof(label), u8"\u0421\u043e\u0441\u0442\u0430\u0432\u043d\u0430\u044f %zu", ci + 1);
                     if (ImGui::SmallButton(label)) {
+                        // Safe: collect raw ptrs first, then extract owned ptrs
                         auto selCopy = scene.getSelection();
+                        std::vector<std::unique_ptr<core::Figure>> toAdd;
                         for (core::Figure* f : selCopy) {
                             if (dynamic_cast<core::CompositeFigure*>(f) == composites[ci]) continue;
-                            // find unique_ptr in scene
-                            std::unique_ptr<core::Figure> owned;
                             for (auto& up : const_cast<std::vector<std::unique_ptr<core::Figure>>&>(scene.getFigures())) {
-                                if (up.get() == f) { owned = std::move(up); break; }
+                                if (up.get() == f) { toAdd.push_back(std::move(up)); break; }
                             }
-                            scene.removeFigure(f);
-                            if (owned) composites[ci]->addChild(std::move(owned));
+                        }
+                        for (auto& owned : toAdd) {
+                            scene.removeFigure(owned.get());
+                            composites[ci]->addChild(std::move(owned));
                         }
                         scene.clearSelection();
                     }
@@ -119,7 +119,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // ── Composite figure editor ────────────────────────────────────────────────────
+    // ── Composite figure editor ────────────────────────────────────────────────
     auto* composite = dynamic_cast<core::CompositeFigure*>(selectedFigure);
     if (composite) {
         if (ImGui::TreeNodeEx(u8"\u0421\u043e\u0441\u0442\u0430\u0432\u043d\u0430\u044f \u0444\u0438\u0433\u0443\u0440\u0430", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -127,11 +127,9 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
             ImGui::Text(u8"\u0414\u0435\u0442\u0435\u0439: %zu", children.size());
             ImGui::Spacing();
 
-            // List children with remove buttons
             int removeIdx = -1;
             for (size_t i = 0; i < children.size(); ++i) {
                 ImGui::PushID((int)i);
-                // Show type name
                 const char* typeName = u8"\u0424\u0438\u0433\u0443\u0440\u0430";
                 if (dynamic_cast<core::PolylineShape*>(children[i].get()))
                     typeName = u8"\u041f\u043e\u043b\u0438\u043b\u0438\u043d\u0438\u044f";
@@ -147,36 +145,31 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
 
             if (removeIdx >= 0 && (size_t)removeIdx < children.size()) {
                 auto extracted = composite->removeChild(children[removeIdx].get());
-                if (extracted) {
-                    // Place extracted figure back at same world position
-                    scene.addFigure(std::move(extracted));
-                }
+                if (extracted) scene.addFigure(std::move(extracted));
             }
 
-            // ── Add a scene figure into this composite ──────────────────────
+            // Add a scene figure into this composite
             ImGui::Separator();
             ImGui::TextUnformatted(u8"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0444\u0438\u0433\u0443\u0440\u0443:");
             const auto& allFigs = scene.getFigures();
+            core::Figure* toTransfer = nullptr;
             for (const auto& fig : allFigs) {
-                if (fig.get() == composite) continue; // skip self
-                if (dynamic_cast<core::CompositeFigure*>(fig.get())) continue; // skip other composites
+                if (fig.get() == composite) continue;
+                if (dynamic_cast<core::CompositeFigure*>(fig.get())) continue;
                 ImGui::PushID(fig.get());
-                // Show a small identifying label (use bounding box position)
                 sf::FloatRect b = fig->getBoundingBox();
                 char label[64];
                 std::snprintf(label, sizeof(label), "(%.0f,%.0f)", b.left + b.width/2.f, b.top + b.height/2.f);
-                if (ImGui::SmallButton(label)) {
-                    // We need the unique_ptr: find it in scene
-                    std::unique_ptr<core::Figure> owned;
-                    for (auto& up : const_cast<std::vector<std::unique_ptr<core::Figure>>&>(allFigs)) {
-                        if (up.get() == fig.get()) { owned = std::move(up); break; }
-                    }
-                    scene.removeFigure(fig.get());
-                    if (owned) composite->addChild(std::move(owned));
-                    ImGui::PopID();
-                    break; // iterator invalidated
-                }
+                if (ImGui::SmallButton(label)) toTransfer = fig.get();
                 ImGui::PopID();
+            }
+            if (toTransfer) {
+                std::unique_ptr<core::Figure> owned;
+                for (auto& up : const_cast<std::vector<std::unique_ptr<core::Figure>>&>(allFigs)) {
+                    if (up.get() == toTransfer) { owned = std::move(up); break; }
+                }
+                scene.removeFigure(toTransfer);
+                if (owned) composite->addChild(std::move(owned));
             }
 
             ImGui::TreePop();
@@ -185,42 +178,67 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         ImGui::Spacing();
     }
 
-    // ── Polyline segment editor ─────────────────────────────────────────────────────
+    // ── Polyline segment editor with highlight ────────────────────────────────────
     auto* polyline = dynamic_cast<core::PolylineShape*>(selectedFigure);
     if (polyline) {
         if (ImGui::TreeNodeEx(u8"\u041e\u0442\u0440\u0435\u0437\u043a\u0438 (\u043f\u043e\u043b\u0438\u043b\u0438\u043d\u0438\u044f)", ImGuiTreeNodeFlags_DefaultOpen)) {
             auto& segs = polyline->getSegments();
             bool changed = false;
 
+            int newHover = -1;
             for (size_t i = 0; i < segs.size(); ++i) {
                 ImGui::PushID((int)i);
                 ImGui::Separator();
+
+                // Highlight row if this segment is selected
+                bool isActive = (m_selectedSegmentIndex == (int)i);
+                if (isActive) {
+                    ImVec2 p = ImGui::GetCursorScreenPos();
+                    ImGui::GetWindowDrawList()->AddRectFilled(
+                        p,
+                        ImVec2(p.x + ImGui::GetContentRegionAvail().x, p.y + ImGui::GetTextLineHeightWithSpacing()),
+                        IM_COL32(0, 120, 215, 60));
+                }
+
                 ImGui::Text(u8"\u041e\u0442\u0440\u0435\u0437\u043e\u043a %zu", i + 1);
+                // Clicking the label selects this segment
+                if (ImGui::IsItemClicked()) { m_selectedSegmentIndex = (int)i; newHover = (int)i; }
+                if (ImGui::IsItemHovered()) newHover = (int)i;
 
                 if (ImGui::InputFloat(u8"\u0414\u043b\u0438\u043d\u0430", &segs[i].length, 1.f, 10.f, "%.1f",
                                       ImGuiInputTextFlags_EnterReturnsTrue)) {
                     segs[i].length = std::max(1.f, segs[i].length);
                     changed = true;
+                    m_selectedSegmentIndex = (int)i;
                 }
+                if (ImGui::IsItemHovered()) newHover = (int)i;
 
                 if (i == 0) {
                     if (ImGui::InputFloat(u8"\u041d\u0430\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 (\u0430\u0431\u0441)",
                                          &segs[i].angle, 1.f, 10.f, "%.1f\xc2\xb0",
                                          ImGuiInputTextFlags_EnterReturnsTrue))
                         changed = true;
-                    if (ImGui::IsItemHovered())
+                    if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip(u8"\u0410\u0431\u0441\u043e\u043b\u044e\u0442\u043d\u044b\u0439 \u0443\u0433\u043e\u043b \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u043e\u0442\u0440\u0435\u0437\u043a\u0430 (\u0433\u0440\u0430\u0434. \u043e\u0442 +X)");
+                        newHover = (int)i;
+                    }
                 } else {
                     if (ImGui::InputFloat(u8"\u0423\u0433\u043e\u043b \u043f\u043e\u0432\u043e\u0440\u043e\u0442\u0430",
                                          &segs[i].angle, 1.f, 10.f, "%.1f\xc2\xb0",
                                          ImGuiInputTextFlags_EnterReturnsTrue))
                         changed = true;
-                    if (ImGui::IsItemHovered())
+                    if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip(u8"\u0423\u0433\u043e\u043b \u043f\u043e\u0432\u043e\u0440\u043e\u0442\u0430 \u043e\u0442 \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0433\u043e \u043e\u0442\u0440\u0435\u0437\u043a\u0430");
+                        newHover = (int)i;
+                    }
                 }
 
                 ImGui::PopID();
             }
+
+            // Update hover only when inside the panel; keep selection sticky on click
+            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && newHover >= 0)
+                m_selectedSegmentIndex = newHover;
 
             if (changed) polyline->rebuild();
 
@@ -228,9 +246,12 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         }
         ImGui::Separator();
         ImGui::Spacing();
+    } else {
+        // Reset segment highlight when no polyline is selected
+        m_selectedSegmentIndex = -1;
     }
 
-    // ── Anchor ─────────────────────────────────────────────────────────────────────
+    // ── Anchor ───────────────────────────────────────────────────────────────────────
     ImGui::TextUnformatted(u8"\u0422\u043e\u0447\u043a\u0430 \u043f\u0440\u0438\u0432\u044f\u0437\u043a\u0438");
     ImGui::SameLine();
     ImGui::Checkbox(u8"\u0417\u0430\u043a\u0440\u0435\u043f\u0438\u0442\u044c \u043a \u0444\u0438\u0433\u0443\u0440\u0435", &m_lockAnchor);
@@ -287,7 +308,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
     }
     ImGui::Spacing();
 
-    // ── Rotation ───────────────────────────────────────────────────────────────────────
+    // ── Rotation ─────────────────────────────────────────────────────────────────────
     ImGui::Separator();
     ImGui::TextUnformatted(u8"\u041f\u043e\u0432\u043e\u0440\u043e\u0442");
     float rotation = selectedFigure->rotationAngle;
@@ -297,7 +318,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         selectedFigure->rotationAngle = 0.f;
     ImGui::Spacing();
 
-    // ── Scale ────────────────────────────────────────────────────────────────────────
+    // ── Scale ──────────────────────────────────────────────────────────────────────
     ImGui::Separator();
     ImGui::TextUnformatted(u8"\u041c\u0430\u0441\u0448\u0442\u0430\u0431");
     ImGui::Checkbox(u8"\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0442\u044c \u043f\u0440\u043e\u043f\u043e\u0440\u0446\u0438\u0438", &m_lockProportions);
@@ -317,7 +338,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         selectedFigure->applyScale();
     ImGui::Spacing();
 
-    // ── Edges & side lengths (non-composite) ──────────────────────────────────────
+    // ── Edges & side lengths (non-composite) ───────────────────────────────────────
     bool hasLengths = selectedFigure->hasSideLengths();
     if (!composite && (!selectedFigure->edges.empty() || hasLengths)) {
         ImGui::Separator();
@@ -456,7 +477,7 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
         }
     }
 
-    // ── Bounding box ───────────────────────────────────────────────────────────────────
+    // ── Bounding box ────────────────────────────────────────────────────────────────────
     ImGui::Separator();
     ImGui::TextUnformatted(u8"\u0413\u0430\u0431\u0430\u0440\u0438\u0442\u044b");
     sf::FloatRect bounds = selectedFigure->getBoundingBox();
