@@ -20,34 +20,40 @@ void PolylineShape::rebuild() {
         return;
     }
 
-    m_vertices.resize(n);
+    m_vertices.resize(n + 1);
 
     // Segment 0: absolute direction angle (degrees)
     float dirDeg = m_segments[0].angle;
 
-    // Build vertices starting from (0,0)
     sf::Vector2f cur(0.f, 0.f);
     m_vertices[0] = cur;
 
     for (size_t i = 0; i < n; ++i) {
         float rad = dirDeg * math::DEG_TO_RAD;
-        sf::Vector2f dir(std::cos(rad), std::sin(rad));
-        cur += dir * m_segments[i].length;
-
-        size_t nextIdx = (i + 1) % n;
-        m_vertices[nextIdx] = cur;
+        cur += sf::Vector2f(std::cos(rad), std::sin(rad)) * m_segments[i].length;
+        m_vertices[i + 1] = cur;
 
         if (i + 1 < n) {
-            // Turn by exterior angle of next segment
             dirDeg += m_segments[i + 1].angle;
         }
     }
 
-    // Centre vertices at centroid
+    // For closed shapes (polygon): last vertex == first vertex within tolerance.
+    // If so, drop the duplicate and treat as closed polygon with n vertices.
+    bool closed = false;
+    {
+        sf::Vector2f diff = m_vertices[n] - m_vertices[0];
+        if (std::hypot(diff.x, diff.y) < 1.f) {
+            m_vertices.resize(n);
+            closed = true;
+        }
+    }
+
+    // Centre at centroid
+    size_t cnt = m_vertices.size();
     float cx = 0.f, cy = 0.f;
     for (auto& v : m_vertices) { cx += v.x; cy += v.y; }
-    cx /= (float)n;
-    cy /= (float)n;
+    cx /= (float)cnt; cy /= (float)cnt;
     for (auto& v : m_vertices) { v.x -= cx; v.y -= cy; }
 
     syncEdges();
@@ -71,7 +77,6 @@ void PolylineShape::setSideLengths(const std::vector<float>& lengths) {
 }
 
 const char* PolylineShape::getSideName(int idx) const {
-    // Build names lazily
     if (m_sideNames.size() != m_segments.size()) {
         m_sideNames.resize(m_segments.size());
         for (size_t i = 0; i < m_segments.size(); ++i) {
@@ -91,43 +96,40 @@ PolylineShape PolylineShape::makeTriangle(float sideA, float sideB, float sideC)
     sideB = std::max(1.f, sideB);
     sideC = std::max(1.f, sideC);
 
-    // Clamp to valid triangle
-    auto clampSide = [](float s, float a, float b) {
-        return std::min(s, a + b - 0.1f);
-    };
-    sideA = clampSide(sideA, sideB, sideC);
-    sideB = clampSide(sideB, sideA, sideC);
-    sideC = clampSide(sideC, sideA, sideB);
+    // Clamp to valid triangle inequality
+    sideA = std::min(sideA, sideB + sideC - 0.1f);
+    sideB = std::min(sideB, sideA + sideC - 0.1f);
+    sideC = std::min(sideC, sideA + sideB - 0.1f);
 
-    // Place base (sideA) along 0 degrees, compute angle at vertex 0 using law of cosines
-    // cos(A) = (b^2 + c^2 - a^2)/(2bc)  -- angle at V0 opposite to sideA
-    float cosA = (sideB * sideB + sideC * sideC - sideA * sideA) / (2.f * sideB * sideC);
-    cosA = std::max(-1.f, std::min(1.f, cosA));
-    float angleAtV0 = std::acos(cosA) * math::RAD_TO_DEG;
+    // Place sideA along 0 degrees (base).
+    // Compute angle at V0 (between sideC and sideA) using law of cosines:
+    // cos(V0) = (sideA^2 + sideC^2 - sideB^2) / (2*sideA*sideC)
+    // We go: V0 --(sideA)--> V1 --(sideB)--> V2 --(sideC)--> V0
+    // Segment[0]: dir=0, len=sideA
+    // At V1 we turn left (CCW) by exterior angle = 180 - angle_at_V1
+    // cos(V1) = (sideA^2 + sideB^2 - sideC^2) / (2*sideA*sideB)
+    float cosV1 = (sideA*sideA + sideB*sideB - sideC*sideC) / (2.f*sideA*sideB);
+    cosV1 = std::max(-1.f, std::min(1.f, cosV1));
+    float angleV1 = std::acos(cosV1) * math::RAD_TO_DEG; // interior angle at V1
 
-    // Segment 0: sideC, direction 0deg
-    // Segment 1: sideA, direction = turn by (180 - angleAtV0) at V1
-    // Segment 2: sideB, closes back
-    // Interior angle at V1: use law of cosines
-    float cosB = (sideA * sideA + sideC * sideC - sideB * sideB) / (2.f * sideA * sideC);
-    cosB = std::max(-1.f, std::min(1.f, cosB));
-    float angleAtV1 = std::acos(cosB) * math::RAD_TO_DEG;
+    // cos(V2) = (sideB^2 + sideC^2 - sideA^2) / (2*sideB*sideC)
+    float cosV2 = (sideB*sideB + sideC*sideC - sideA*sideA) / (2.f*sideB*sideC);
+    cosV2 = std::max(-1.f, std::min(1.f, cosV2));
+    float angleV2 = std::acos(cosV2) * math::RAD_TO_DEG;
 
-    // Exterior turn at each vertex = 180 - interior_angle
-    // Segment[0].angle = initial absolute direction (0 degrees)
-    // Segment[1].angle = exterior turn at V1 = 180 - angleAtV1 (but we go CW for typical triangle)
-    // For a CW wound triangle (standard screen coords, Y down):
-    float turn1 = -(180.f - angleAtV1); // negative = clockwise turn
-    float turn2 = -(180.f - angleAtV0);
+    // Exterior turn (CCW = positive in screen coords where Y down means CW is positive).
+    // We want a CCW-wound triangle (standard mathematical orientation):
+    // turn at V1 = -(180 - angleV1)  (turn left = negative in Y-down coords)
+    float turn1 = -(180.f - angleV1);
+    float turn2 = -(180.f - angleV2);
 
     std::vector<Segment> segs = {
-        {sideC, 0.f},
-        {sideA, turn1},
-        {sideB, turn2}
+        {sideA, 0.f},
+        {sideB, turn1},
+        {sideC, turn2}
     };
 
-    PolylineShape ps(std::move(segs));
-    return ps;
+    return PolylineShape(std::move(segs));
 }
 
 PolylineShape PolylineShape::makeTrapezoid(float topW, float bottomW, float height) {
@@ -135,50 +137,44 @@ PolylineShape PolylineShape::makeTrapezoid(float topW, float bottomW, float heig
     bottomW = std::max(1.f, bottomW);
     height  = std::max(1.f, height);
 
-    // BL -> BR -> TR -> TL
-    // dx = (topW - bottomW) / 2.f  (offset of each leg)
-    float dx     = (topW - bottomW) / 2.f;
-    float legR   = std::sqrt(dx * dx + height * height); // right leg
-    float legL   = legR;                                  // symmetric
+    // Build vertices explicitly then convert to segments.
+    // Layout (Y down, screen coords):
+    //   BL=(0,0), BR=(bottomW,0), TR=(bottomW - (bottomW-topW)/2, -height), TL=((bottomW-topW)/2, -height)
+    float offset = (bottomW - topW) / 2.f;
 
-    // Angles for legs (atan2 gives angle from +X)
-    float legAngle = std::atan2(-height, dx) * math::RAD_TO_DEG; // from BR to TR
+    sf::Vector2f BL(0.f,       0.f);
+    sf::Vector2f BR(bottomW,   0.f);
+    sf::Vector2f TR(bottomW - offset, -height);
+    sf::Vector2f TL(offset,          -height);
 
-    // Build segments: bottom, right leg, top (reversed), left leg
-    // Start at BL going right (0 deg)
-    float turnAfterBottom = legAngle; // at BR: absolute dir to TR
-    float turnAfterRightLeg = 180.f;  // at TR: go left along top
-    float turnAfterTop = -legAngle + 180.f; // at TL: go down-right
-
-    std::vector<Segment> segs = {
-        {bottomW,  0.f},
-        {legR,     legAngle},
-        {topW,     180.f - legAngle},
-        {legL,     -(180.f - legAngle)}
+    // Segments: BL->BR, BR->TR, TR->TL, TL->BL
+    auto segFromPts = [](sf::Vector2f a, sf::Vector2f b) -> std::pair<float,float> {
+        sf::Vector2f d = b - a;
+        float len = std::hypot(d.x, d.y);
+        float ang = std::atan2(d.y, d.x) * math::RAD_TO_DEG;
+        return {len, ang};
     };
 
-    // Recompute as exterior turns:
-    // Segment[0].angle = absolute direction of seg0 = 0 (going right)
-    // Segment[i].angle for i>0 = turn at junction V_{i-1} -> V_i
-    // i.e. how much to change direction at that vertex
-    // We compute cumulative absolute directions:
-    float dir0 = 0.f;
-    float dir1 = std::atan2(-height, dx) * math::RAD_TO_DEG;  // BL->BR to BR->TR
-    float dir2 = 180.f;  // going left along top
-    float dir3 = std::atan2(height, -dx) * math::RAD_TO_DEG;  // TL->BL direction
+    auto [len0, dir0] = segFromPts(BL, BR);
+    auto [len1, dir1] = segFromPts(BR, TR);
+    auto [len2, dir2] = segFromPts(TR, TL);
+    auto [len3, dir3] = segFromPts(TL, BL);
 
-    segs[0].angle = dir0;        // initial absolute dir
-    segs[1].angle = dir1 - dir0; // turn at V1
-    segs[2].angle = dir2 - dir1; // turn at V2
-    segs[3].angle = dir3 - dir2; // turn at V3
+    // Normalise turn angles to (-180, 180]
+    auto normAngle = [](float a) -> float {
+        while (a >  180.f) a -= 360.f;
+        while (a <= -180.f) a += 360.f;
+        return a;
+    };
 
-    segs[0].length = bottomW;
-    segs[1].length = legR;
-    segs[2].length = topW;
-    segs[3].length = legL;
+    std::vector<Segment> segs = {
+        {len0, dir0},                      // seg0: absolute direction
+        {len1, normAngle(dir1 - dir0)},    // turn at BR
+        {len2, normAngle(dir2 - dir1)},    // turn at TR
+        {len3, normAngle(dir3 - dir2)},    // turn at TL
+    };
 
-    PolylineShape ps(std::move(segs));
-    return ps;
+    return PolylineShape(std::move(segs));
 }
 
 } // namespace core
