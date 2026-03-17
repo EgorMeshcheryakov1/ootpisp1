@@ -18,7 +18,7 @@ set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SFML_BUILD_TEST_SUITE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SFML)
 
-# Fetch ImGui-SFML (which will fetch ImGui internally usually, or we need to provide it)
+# Fetch ImGui-SFML
 FetchContent_Declare(ImGui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG v1.90.4-docking
@@ -27,13 +27,11 @@ FetchContent_MakeAvailable(ImGui)
 
 FetchContent_Declare(ImGui-SFML
     GIT_REPOSITORY https://github.com/SFML/imgui-sfml.git
-    GIT_TAG v2.6.1 # v2.6.1 works with SFML 2.6
+    GIT_TAG v2.6.1
 )
-# We need to tell ImGui-SFML where ImGui is
 set(IMGUI_DIR ${imgui_SOURCE_DIR} CACHE PATH "" FORCE)
 set(IMGUI_SFML_FIND_SFML OFF CACHE BOOL "" FORCE)
 
-# Add aliases for ImGui-SFML to find SFML targets
 if (NOT TARGET SFML::Graphics)
     add_library(SFML::System ALIAS sfml-system)
     add_library(SFML::Window ALIAS sfml-window)
@@ -48,6 +46,8 @@ add_executable(GraphEditor
     src/core/Figure.cpp
     src/core/Figures.cpp
     src/core/Scene.cpp
+    src/core/PolylineShape.cpp
+    src/core/CompositeFigure.cpp
     src/ui/Toolbar.cpp
     src/ui/PropertiesPanel.cpp
     src/ui/CreateFigureModal.cpp
@@ -56,14 +56,10 @@ add_executable(GraphEditor
 
 target_include_directories(GraphEditor PRIVATE src)
 
-# Add optimization for Linux (Ubuntu)
 if(UNIX AND NOT APPLE)
-    # Enable O3 optimization and native architecture tuning for best performance on Linux
     target_compile_options(GraphEditor PRIVATE -O3 -march=native)
 endif()
 
-
-# Link
 target_link_libraries(GraphEditor PRIVATE
     sfml-graphics
     sfml-window
@@ -73,9 +69,7 @@ target_link_libraries(GraphEditor PRIVATE
 
 if(WIN32)
     target_link_libraries(GraphEditor PRIVATE
-        gdi32  # для графики
+        gdi32
         opengl32
     )
 endif()
-
-# On Mac we may need to link some frameworks if statically linking, but FetchContent usually handles it
