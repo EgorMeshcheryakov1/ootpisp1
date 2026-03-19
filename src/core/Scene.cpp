@@ -10,15 +10,26 @@ void Scene::addFigure(std::unique_ptr<Figure> fig) {
 }
 
 bool Scene::removeFigure(Figure *fig) {
+  auto owned = takeFigure(fig);
+  return owned != nullptr;
+}
+
+std::unique_ptr<Figure> Scene::takeFigure(Figure *fig) {
+  if (!fig)
+    return nullptr;
+
   removeFromSelection(fig);
-  if (m_selectedFigure == fig) m_selectedFigure = nullptr;
+  if (m_selectedFigure == fig)
+    m_selectedFigure = nullptr;
+
   for (auto it = m_figures.begin(); it != m_figures.end(); ++it) {
     if (it->get() == fig) {
+      auto owned = std::move(*it);
       m_figures.erase(it);
-      return true;
+      return owned;
     }
   }
-  return false;
+  return nullptr;
 }
 
 Figure *Scene::hitTest(sf::Vector2f point) const {
@@ -30,8 +41,6 @@ Figure *Scene::hitTest(sf::Vector2f point) const {
   return nullptr;
 }
 
-// ── Selection helpers ───────────────────────────────────────────────────────
-
 void Scene::setSelectedFigure(Figure *fig) {
   m_selectedFigure = fig;
   m_selection.clear();
@@ -41,7 +50,7 @@ void Scene::setSelectedFigure(Figure *fig) {
 void Scene::addToSelection(Figure *fig) {
   if (!fig) return;
   if (!isSelected(fig)) m_selection.push_back(fig);
-  m_selectedFigure = fig; // last selected becomes "primary"
+  m_selectedFigure = fig;
 }
 
 void Scene::removeFromSelection(Figure *fig) {
@@ -60,20 +69,17 @@ bool Scene::isSelected(Figure *fig) const {
   return std::find(m_selection.begin(), m_selection.end(), fig) != m_selection.end();
 }
 
-// ── Drawing ─────────────────────────────────────────────────────────────────
-
 void Scene::drawAll(sf::RenderTarget &target, float markerScale) const {
   for (const auto &fig : m_figures) {
     fig->draw(target);
   }
 
-  // Draw selection highlight for every selected figure
   for (Figure* sel : m_selection) {
+    if (!sel) continue;
     sf::FloatRect bounds = sel->getBoundingBox();
     sf::RectangleShape bbox(sf::Vector2f(bounds.width, bounds.height));
     bbox.setPosition(bounds.left, bounds.top);
     bbox.setFillColor(sf::Color::Transparent);
-    // Primary selection = bright blue, others = lighter blue
     bool isPrimary = (sel == m_selectedFigure);
     bbox.setOutlineColor(isPrimary ? sf::Color(0, 120, 215) : sf::Color(100, 170, 240));
     bbox.setOutlineThickness(1.f * markerScale);
@@ -92,8 +98,6 @@ void Scene::drawAll(sf::RenderTarget &target, float markerScale) const {
     marker.setPosition(bounds.left, bounds.top + bounds.height); target.draw(marker);
   }
 }
-
-// ── World Origin ─────────────────────────────────────────────────────────────
 
 void Scene::setCustomOrigin(sf::Vector2f newOriginWorld) {
   for (auto &figure : m_figures) {
