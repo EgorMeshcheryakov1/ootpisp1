@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Figure.hpp"
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,7 +27,7 @@ public:
 
     void move(sf::Vector2f delta) override;
 
-    static std::string makeDefaultName(size_t index) {
+    static std::string makeDefaultName(std::size_t index) {
         return "Child " + std::to_string(index + 1);
     }
 

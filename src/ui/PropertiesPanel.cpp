@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <imgui.h>
+#include <string>
 
 namespace ui {
 namespace {
@@ -221,7 +222,8 @@ bool PropertiesPanel::render(core::Scene& scene, core::Viewport& viewport) {
                     continue;
 
                 ImGui::PushID(static_cast<int>(3000 + i));
-                if (ImGui::TreeNode( core::CompositeFigure::makeDefaultName(i).c_str())) {
+                std::string childLabel = core::CompositeFigure::makeDefaultName(i);
+                if (ImGui::TreeNode(childLabel.c_str())) {
                     if (ImGui::Button(u8"Редактировать"))
                         childToSelect = child.get();
                     ImGui::SameLine();

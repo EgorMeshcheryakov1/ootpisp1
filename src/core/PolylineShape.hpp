@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Figure.hpp"
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,7 @@ public:
 
     bool isClosed() const { return m_closed; }
     void setClosed(bool closed);
-    void setSegmentAngle(size_t idx, float angleDegrees);
+    void setSegmentAngle(std::size_t idx, float angleDegrees);
 
     void rebuild();
     const char* getSideName(int idx) const override;
