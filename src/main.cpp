@@ -646,13 +646,17 @@ int main() {
                         }
                     } else if (isDraggingAnchor && scene.getSelectedFigure()) {
                         sf::Vector2f newAbsoluteAnchor = mousePos - dragOffset;
-                        if (propertiesPanel.m_lockAnchor)
-                            scene.getSelectedFigure()->anchor = newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin;
-                        else
-                            scene.getSelectedFigure()->setAnchorKeepAbsolute(newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin);
+                        sf::Vector2f newAnchor = newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin;
+                        bool selectedIsComposite = dynamic_cast<core::CompositeFigure*>(scene.getSelectedFigure()) != nullptr;
+                        if (propertiesPanel.m_lockAnchor || selectedIsComposite) {
+                            scene.getSelectedFigure()->move(newAnchor - scene.getSelectedFigure()->anchor);
+                        } else {
+                            scene.getSelectedFigure()->setAnchorKeepAbsolute(newAnchor);
+                        }
                     } else if (isDragging && scene.getSelectedFigure()) {
                         sf::Vector2f newAbsoluteAnchor = mousePos - dragOffset;
-                        scene.getSelectedFigure()->anchor = newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin;
+                        sf::Vector2f newAnchor = newAbsoluteAnchor - scene.getSelectedFigure()->parentOrigin;
+                        scene.getSelectedFigure()->move(newAnchor - scene.getSelectedFigure()->anchor);
                     }
                 }
             }
@@ -895,6 +899,52 @@ int main() {
         if (!propertiesPanel.m_drawOriginsOverFigures)
             drawOrigins();
         scene.drawAll(window, 1.f / viewport.zoom);
+
+        if (scene.getSelectedFigure() && propertiesPanel.m_selectedSegmentIndex >= 0) {
+            auto* selected = scene.getSelectedFigure();
+            const auto& verts = selected->getVertices();
+            auto* polyline = dynamic_cast<core::PolylineShape*>(selected);
+            bool isOpenPolyline = polyline && !polyline->isClosed();
+
+            auto drawHighlightedEdge = [&](int edgeIndex, sf::Color color) {
+                if (edgeIndex < 0) return;
+                size_t idx = static_cast<size_t>(edgeIndex);
+                if (verts.size() < 2) return;
+                if (isOpenPolyline) {
+                    if (idx + 1 >= verts.size()) return;
+                } else {
+                    if (idx >= verts.size()) return;
+                }
+
+                sf::Vector2f a = selected->getAbsoluteVertex(verts[idx]);
+                sf::Vector2f b = selected->getAbsoluteVertex(verts[isOpenPolyline ? idx + 1 : (idx + 1) % verts.size()]);
+                sf::Vector2f delta = b - a;
+                float len = std::hypot(delta.x, delta.y);
+                if (len <= 0.0001f) return;
+
+                sf::Vector2f dir = delta / len;
+                sf::Vector2f normal(-dir.y, dir.x);
+                float width = 6.f / viewport.zoom;
+
+                sf::ConvexShape quad(4);
+                quad.setPoint(0, a - normal * width);
+                quad.setPoint(1, a + normal * width);
+                quad.setPoint(2, b + normal * width);
+                quad.setPoint(3, b - normal * width);
+                quad.setFillColor(color);
+                window.draw(quad);
+            };
+
+            if (propertiesPanel.m_selectedSegmentIsAngle && polyline) {
+                drawHighlightedEdge(propertiesPanel.m_selectedSegmentIndex, sf::Color(255, 170, 0, 180));
+                if (propertiesPanel.m_selectedSegmentIndex > 0) {
+                    drawHighlightedEdge(propertiesPanel.m_selectedSegmentIndex - 1, sf::Color(255, 220, 0, 180));
+                }
+            } else {
+                drawHighlightedEdge(propertiesPanel.m_selectedSegmentIndex, sf::Color(255, 235, 59, 190));
+            }
+        }
+
         if (propertiesPanel.m_drawOriginsOverFigures)
             drawOrigins();
 

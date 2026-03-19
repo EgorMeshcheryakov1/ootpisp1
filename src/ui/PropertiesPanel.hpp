@@ -16,6 +16,7 @@ public:
     // Index of the polyline segment currently hovered/selected in the panel.
     // -1 means none. main.cpp reads this to draw the highlight.
     int  m_selectedSegmentIndex   = -1;
+    bool m_selectedSegmentIsAngle = false;
 };
 
 } // namespace ui

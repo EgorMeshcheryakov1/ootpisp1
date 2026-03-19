@@ -149,6 +149,11 @@ std::vector<sf::Vector2f>& CompositeFigure::getVerticesMutable() {
 
 void CompositeFigure::move(sf::Vector2f delta) {
     anchor += delta;
+    for (auto& child : m_children) {
+        if (child) {
+            child->anchor += delta;
+        }
+    }
 }
 
 } // namespace core
