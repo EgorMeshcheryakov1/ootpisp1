@@ -13,6 +13,7 @@ public:
 
   // Removes the given figure from the scene. Returns true if removed.
   bool removeFigure(Figure *fig);
+  std::unique_ptr<Figure> takeFigure(Figure *fig);
 
   // Returns the top-most figure at the given absolute point, or nullptr if none
   Figure *hitTest(sf::Vector2f point) const;

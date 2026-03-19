@@ -26,8 +26,8 @@ namespace core {
 
         std::vector<Edge> edges;
 
-        sf::FloatRect getBoundingBox() const;
-        sf::FloatRect getLocalBoundingBox() const;
+        virtual sf::FloatRect getBoundingBox() const;
+        virtual sf::FloatRect getLocalBoundingBox() const;
 
         virtual const std::vector<sf::Vector2f>& getVertices() const {
             return m_vertices;
@@ -41,7 +41,7 @@ namespace core {
         virtual void draw(sf::RenderTarget& target) const;
         virtual bool contains(sf::Vector2f point) const;
 
-        void move(sf::Vector2f delta);
+        virtual void move(sf::Vector2f delta);
         void resetAnchor();
         void setAnchorKeepAbsolute(sf::Vector2f newAnchor);
         void applyScale();

@@ -4,6 +4,7 @@
 
 #include "CreateFigureModal.hpp"
 #include "core/Figures.hpp"
+#include "core/PolylineShape.hpp"
 
 #include <imgui.h>
 #include <memory>
@@ -66,7 +67,7 @@ namespace ui {
             fig = std::make_unique<core::Rectangle>(lengths[0], lengths[3]);
             break;
         case 1:
-            fig = std::make_unique<core::Triangle>(lengths[0], 100.f);
+            fig = std::make_unique<core::PolylineShape>(core::PolylineShape::makeTriangle(lengths[0], lengths[1], lengths[2]));
             break;
         case 2: {
             float avg = 0.f;
@@ -83,7 +84,7 @@ namespace ui {
             break;
         }
         case 4:
-            fig = std::make_unique<core::Trapezoid>(lengths[0], lengths[2], 100.f);
+            fig = std::make_unique<core::PolylineShape>(core::PolylineShape::makeTrapezoid(lengths[0], lengths[2], 100.f));
             break;
         case 5:
             fig = std::make_unique<core::Circle>(m_radiusX, m_radiusY);
